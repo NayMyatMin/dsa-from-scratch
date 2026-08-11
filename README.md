@@ -22,6 +22,18 @@ PROGRESS.md        Tracker for the 19 problems.
 .leetcode-source/  Raw source capture. Authoring input, spoiler-dense — not for reading.
 ```
 
+## Start here
+
+```bash
+uv run python dashboard.py --serve
+```
+
+Opens a dashboard that tells you the single next thing to do. It reads real state — the section
+list comes from `notes/`, and problem status comes from actually running the test suite — so it
+cannot drift from reality. Reading progress is ticked off in the browser and persists.
+
+Regenerate any time with `uv run python dashboard.py`. Use `--fast` to skip the test run.
+
 ## Running
 
 Everything:
