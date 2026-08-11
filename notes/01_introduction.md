@@ -11,9 +11,9 @@ rather than asserted.
 
 ## How to read this
 
-**Run the code.** Every block is executable exactly as written, and every `# -> value` comment is a
-real observed result, not an illustration. There are 273 of them. Open a session next to this
-document and paste as you go:
+**Run the code.** Every block is executable exactly as written — there are 271 of them, carrying 647
+`# -> value` comments — and every one of those comments is a real observed result, not an
+illustration. Open a session next to this document and paste as you go:
 
 ```bash
 uv run python
@@ -29,30 +29,46 @@ test of whether the rest of it landed.
 
 **Measurements come from this machine.** Every number was measured on CPython 3.14.4, the
 interpreter in this repository's virtual environment, on a 64-bit build. Deterministic values —
-object sizes, capacities, printed output — will reproduce exactly for you. Timings will not; they
-depend on your hardware and on what else is running. What should reproduce is the *shape*: the
+object sizes, capacities, printed output — will reproduce exactly for you, with one flagged
+exception in section 11, where `tracemalloc` charges only what your particular session had not
+already allocated. Timings will not reproduce; they depend on your hardware and on what else is
+running. What should reproduce is the *shape*: the
 ratios, the orderings, and the growth curves. Section 11 teaches you how to measure these things
 yourself, which matters more than any individual figure here.
 
+There is exactly one set of figures measured somewhere else. Section 2 compares the two supported
+builds of 3.14, and the second column of that comparison necessarily comes from a second
+interpreter: a CPython 3.14.4 free-threading build. That column is labelled where it appears, and
+nothing outside it depends on that interpreter.
+
+**It is long, and it is not one sitting.** Right around 50,000 words — about six and a quarter hours
+at the pace of prose you stop and run rather than skim. The table below gives a size for each
+section so you can budget a session against it instead of discovering the length by scrolling.
+Three or four sittings is a reasonable plan; the natural break points are the ends of sections 3, 6
+and 9.
+
 ## The sections
 
-| | Section | What it settles |
-|---|---|---|
-| 1 | [What an array is, and why it is fast](#1-what-an-array-is-and-why-it-is-fast) | Contiguity, indexes, and where constant-time access comes from |
-| 2 | [What a Python list actually is](#2-what-a-python-list-actually-is) | The object layout, and why a slot holds an address |
-| 3 | [Creating lists](#3-creating-lists) | Every construction form, and the mutable-repetition trap |
-| 4 | [Reading and writing elements](#4-reading-and-writing-elements) | The two primitive operations, and the off-by-one |
-| 5 | [Slicing, completely](#5-slicing-completely) | Clamping, negative steps, and slice assignment |
-| 6 | [Iterating](#6-iterating) | The iterator protocol, and why mutating mid-loop skips |
-| 7 | [Length and capacity](#7-length-and-capacity) | Over-allocation, the growth rule, and amortized cost |
-| 8 | [The cost of every operation](#8-the-cost-of-every-operation) | The full table, derived rather than memorised |
-| 9 | [Names, aliasing, and changing a list in place](#9-names-aliasing-and-changing-a-list-in-place) | Rebinding versus mutating, and why it decides correctness |
-| 10 | [When a list is the wrong container](#10-when-a-list-is-the-wrong-container) | The rest of the landscape, and why `list` still wins here |
-| 11 | [Measuring instead of guessing](#11-measuring-instead-of-guessing) | How to settle any of this yourself, permanently |
-| 12 | [Drills, and how to know you have it](#12-drills-and-how-to-know-you-have-it) | Twelve predictions, an answer key, and a readiness check |
+| | Section | What it settles | Size |
+|---|---|---|---:|
+| 1 | [What an array is, and why it is fast](#1-what-an-array-is-and-why-it-is-fast) | Contiguity, indexes, and where constant-time access comes from | 2,900 w · 23 min |
+| 2 | [What a Python list actually is](#2-what-a-python-list-actually-is) | The object layout, and why a slot holds an address | 4,300 w · 33 min |
+| 3 | [Creating lists](#3-creating-lists) | Every construction form, and the mutable-repetition trap | 4,100 w · 31 min |
+| 4 | [Reading and writing elements](#4-reading-and-writing-elements) | The two primitive operations, and the off-by-one | 3,500 w · 27 min |
+| 5 | [Slicing, completely](#5-slicing-completely) | Clamping, negative steps, and slice assignment | 3,700 w · 28 min |
+| 6 | [Iterating](#6-iterating) | The iterator protocol, and why mutating mid-loop skips | 3,700 w · 29 min |
+| 7 | [Length and capacity](#7-length-and-capacity) | Over-allocation, the growth rule, and amortized cost | 3,800 w · 29 min |
+| 8 | [The cost of every operation](#8-the-cost-of-every-operation) | The full table, derived rather than memorised | 5,200 w · 40 min |
+| 9 | [Names, aliasing, and changing a list in place](#9-names-aliasing-and-changing-a-list-in-place) | Rebinding versus mutating, and why it decides correctness | 3,300 w · 26 min |
+| 10 | [When a list is the wrong container](#10-when-a-list-is-the-wrong-container) | The rest of the landscape, and why `list` still wins here | 5,000 w · 38 min |
+| 11 | [Measuring instead of guessing](#11-measuring-instead-of-guessing) | How to settle any of this yourself, permanently | 5,500 w · 42 min |
+| 12 | [Drills, and how to know you have it](#12-drills-and-how-to-know-you-have-it) | Eighteen predictions, an answer key, and a readiness check | 4,100 w · 32 min |
 
-Sections 1 through 7 are the core and are best read in order. Sections 8 through 11 are reference
-you will come back to. Section 12 is the exit exam.
+Sections 1 through 9 are the core and are best read in order — about four and a half hours of the
+six. Section 9 sits inside the core band rather than after it because five earlier sections hand it
+the explanation of advice they give: sections 2, 3, 4, 5 and 6 each defer the meaning of "the same
+object" or of `nums[:] = ...` to it, and those debts only come due when you read it. Sections 10 and
+11 are reference you will come back to. Section 12 is the exit exam.
 
 When you finish, the three problems in `arrays101/ch01/` are waiting, and every trap in them is
 something this chapter has already warned you about.
@@ -485,8 +501,9 @@ it uses instead.
 
 The practical reading: `allocated` is an implementation-chosen number and `ob_size` is the one that
 means something. `len()` is the supported way to ask for `ob_size`; no expression in the language
-reports `allocated` at all, which is why the rest of this chapter reads it straight out of the
-struct whenever capacity is the question.
+reports `allocated` at all. The rest of this chapter therefore asks for capacity through a
+`sys.getsizeof` proxy — a one-line `capacity()` helper that needs no `ctypes` — and reads the struct
+field directly only in the one place below where the proxy has to be validated against it.
 
 The claim that the header and the block are separate allocations is directly checkable: force the
 block to be reallocated and watch the header address stay exactly where it was.
@@ -525,8 +542,10 @@ print(sysconfig.get_config_var("Py_GIL_DISABLED"))   # -> 0
 print(list.__basicsize__)                            # -> 40
 ```
 
-`True` and `0` say the lock is present, and every number in this chapter was measured on that build.
-On the free-threaded build those same three lines print `False`, `1` and `56`. The header is larger
+`True` and `0` say the lock is present, and every number in this chapter was measured on that build —
+with the single exception of the right-hand column of the table below, which is this subsection's
+whole point and comes from a CPython 3.14.4 free-threading build run alongside it. On the
+free-threaded build those same three lines print `False`, `1` and `56`. The header is larger
 there because `ob_refcnt` is not a single field: a reference count that only the owning thread
 touches can be updated without an atomic instruction, so the count is split into a thread-local part
 and a shared part, sitting alongside a thread id, a per-object mutex and a byte of flags. The
@@ -556,9 +575,10 @@ free-threaded build gets it from a lock the list carries itself.
 
 ### Reading capacity directly
 
-`allocated` is the only direct instrument for capacity in this chapter, so it deserves a name rather
-than a fresh `ctypes` incantation each time. It is always the last word of the header, on either
-build, which makes a one-line reader that needs no struct definition and no build check:
+Reading `allocated` out of the struct is the only *direct* instrument for capacity, and this
+subsection is the one place the chapter uses it — to establish that the cheap proxy every later
+section reaches for is trustworthy. It is always the last word of the header, on either build, which
+makes a one-line reader that needs no struct definition and no build check:
 
 ```python
 import ctypes
@@ -576,10 +596,10 @@ for i in range(20):
 print(caps)   # -> [4, 4, 4, 4, 8, 8, 8, 8, 16, 16, 16, 16, 16, 16, 16, 16, 24, 24, 24, 24]
 ```
 
-**`allocated(lst)` is the ground truth; the arithmetic `(sys.getsizeof(lst) - 56) // 8` used
-elsewhere is a proxy derived from it.** The proxy is not an independent measurement — a list
-computes its own `sys.getsizeof` answer *from* `allocated`, adding the header size to eight bytes
-per allocated slot. That is why the two can never disagree:
+**`allocated(lst)` is the ground truth; the arithmetic `(sys.getsizeof(lst) - 56) // 8` that the
+rest of the chapter calls `capacity(lst)` is a proxy derived from it.** The proxy is not an
+independent measurement — a list computes its own `sys.getsizeof` answer *from* `allocated`, adding
+the header size to eight bytes per allocated slot. That is why the two can never disagree:
 
 ```python
 import sys
@@ -593,9 +613,10 @@ for i in range(200_000):
 print(EMPTY, mismatches)   # -> 56 0
 ```
 
-Zero disagreements across 200,000 appends, and zero on the free-threaded build too. Use the proxy
-when you would rather not import `ctypes`; use `allocated` when capacity *is* the question, because
-it reads the field instead of inferring it.
+Zero disagreements across 200,000 appends, and zero on the free-threaded build too. That is the
+licence every later capacity question in this chapter runs on: because the two can never disagree,
+the proxy is worth what the struct read is worth, and no section after this one needs `ctypes`.
+Reach for `allocated` yourself only when you want the field rather than an inference from it.
 
 ### A list is a GC-tracked container
 
@@ -971,54 +992,12 @@ wrong operator survives every test that uses small numbers and fails the first t
 257. Use `is` only for `None`, for `True`/`False`, and when you genuinely mean "the same object" —
 which, for a list, is exactly the question section 9 is about.
 
-There is one place the two operators are not yours to choose between, because the container does the
-choosing. **List equality and membership compare identity first and only fall through to `==` when
-the addresses differ**, so an element is always considered to match itself no matter what its `==`
-says. The float `nan` is the value that makes this visible, since it is defined to be unequal to
-everything including itself:
-
-```python
-missing = float("nan")
-readings = [12.5, missing, 13.1]
-
-print(missing == missing)          # -> False
-print(missing in readings)         # -> True
-print(readings == readings[:])     # -> True
-print(readings.index(missing), readings.count(missing))   # -> 1 1
-```
-
-A value that is not equal to itself is still found in a list that holds it, still counted once, and
-still removable by `remove`. You can watch the short-circuit rather than infer it, by counting how
-often `__eq__` is actually reached:
-
-```python
-calls = 0
-
-class Sensor:
-    def __eq__(self, other):
-        global calls
-        calls += 1
-        return False
-
-s = Sensor()
-print(s == s, calls)          # -> False 1
-
-calls = 0
-print(s in [s], calls)        # -> True 0
-
-calls = 0
-print([s] == [s], calls)      # -> True 0
-
-calls = 0
-print([s] == [Sensor()], calls)   # -> False 1
-```
-
-`s == s` runs `__eq__` and honours its `False`. `s in [s]` never runs it, because the identity check
-answered first. This is the same rule the hash-based containers apply once a hash has matched, which
-is why `missing in {missing}` is `True` while `missing in {float("nan")}` is `False` — two objects,
-two addresses, and `==` given the final word only in the second case. So when section 8 describes
-set matching as `hash` then `==`, read it as `hash`, then identity, then `==`: the middle step is
-invisible until a value declines to equal itself.
+There is one place the choice between them is not yours, because the container makes it for you:
+**a list asks `is` before it asks `==`, and a hit on identity ends the question**, so an element is
+always found to match itself no matter what its `__eq__` would have said. That rule governs `in`,
+`index`, `count`, `remove` and list `==` alike, and it is what those operations actually cost, so
+section 8 derives it where it derives their costs — with the one value that makes the two questions
+disagree, and with a class that makes the shortcut audible.
 
 
 ---
@@ -1084,11 +1063,11 @@ An iterable that cannot report a length gets no such treatment. A generator expr
 ```python
 import sys
 
-def slots(lst):
+def capacity(lst):
     return (sys.getsizeof(lst) - 56) // 8
 
-print(slots(list(range(99))))               # -> 100
-print(slots(list(x for x in range(99))))    # -> 108
+print(capacity(list(range(99))))               # -> 100
+print(capacity(list(x for x in range(99))))    # -> 108
 ```
 
 The same 99 elements, eight slots apart. The sized form asked and got it right; the unsized form
@@ -1165,8 +1144,16 @@ the fix later in this section work.
 ### From an existing list
 
 `list(x)`, `x.copy()`, `x[:]`, and `copy.copy(x)` all produce a new list of length `len(x)` holding
-the same pointers, and all four cost the same to within noise: 0.12, 0.11, 0.11, and 0.14 µs
-respectively for a 100-element list.
+the same pointers. Three of the four also cost the same: on a 100-element list, `list(x)`, `x.copy()`
+and `x[:]` came in at 0.13, 0.12 and 0.12 µs, which is close enough that they trade places from one
+run to the next and the measurement simply does not separate them. `copy.copy(x)` is the odd one out
+at 0.16 µs — slowest of the four in 35 of 36 reruns, and between 1.3 and 1.7 times the fastest of
+the other three. That gap is stable because it is not a different copying strategy at all:
+`copy.copy` is an ordinary Python function that checks the type against two small containers of
+known types and then, for a list, calls `list.copy` anyway. You pay a Python-level call and two
+membership tests to reach the operation `x.copy()` starts with. (Section 11 sets out when a gap this
+size counts as real and when it is noise: it counts when it survives a dozen reruns pointing the
+same way, which this one does and the other three do not.)
 
 They do not all allocate the same block. `x.copy()`, `x[:]`, and `copy.copy(x)` take a slicing path
 that allocates exactly `len(x)` slots. `list(x)` takes the constructor path from above, which
@@ -1175,21 +1162,23 @@ rounds an odd length up to the next even one:
 ```python
 import copy, sys
 
-def slots(lst):
+def capacity(lst):
     return (sys.getsizeof(lst) - 56) // 8
 
 src = [0] * 99
-print(slots(src))                   # -> 99
-print(slots(list(src)))             # -> 100
-print(slots(src.copy()))            # -> 99
-print(slots(src[:]))                # -> 99
-print(slots(copy.copy(src)))        # -> 99
+print(capacity(src))                   # -> 99
+print(capacity(list(src)))             # -> 100
+print(capacity(src.copy()))            # -> 99
+print(capacity(src[:]))                # -> 99
+print(capacity(copy.copy(src)))        # -> 99
 ```
 
 One slot, eight bytes, and only on an odd length. It is not a reason to prefer one of them; it is a
-reason not to assume they are the same call underneath. Choose on readability: `x.copy()` says what
-it does, `x[:]` is terser and older, `list(x)` is the one to reach for when `x` might not be a list
-in the first place.
+reason not to assume they are the same call underneath. Choose among the three on readability:
+`x.copy()` says what it does, `x[:]` is terser and older, `list(x)` is the one to reach for when `x`
+might not be a list in the first place. `copy.copy(x)` earns its place only when the type is
+genuinely unknown at the call site — on a value you already know is a list, it is the same work with
+a detour in front of it.
 
 ### Merging: `a + b` and `[*a, *b]`
 
@@ -1212,14 +1201,14 @@ growth step leaves:
 ```python
 import sys
 
-def slots(lst):
+def capacity(lst):
     return (sys.getsizeof(lst) - 56) // 8
 
 a = [18, 21, 19]
 b = [22, 20]
 
-print(slots(a + b))         # -> 5     exact: 3 + 2
-print(slots([*a, *b]))      # -> 8     grown, and rounded up
+print(capacity(a + b))         # -> 5     exact: 3 + 2
+print(capacity([*a, *b]))      # -> 8     grown, and rounded up
 ```
 
 Five elements in eight slots. The overshoot is proportionally largest when the lists are small and
@@ -1266,20 +1255,20 @@ that cannot grows. Ninety-nine elements arriving eight different ways:
 ```python
 import sys
 
-def slots(lst):
+def capacity(lst):
     return (sys.getsizeof(lst) - 56) // 8
 
 src = [0] * 99
 txt = ' '.join('x' for _ in range(99))
 
-print(slots(src[:]))                # -> 99     exact
-print(slots(src[:50] + src[50:]))   # -> 99     exact
-print(slots(list(src)))             # -> 100    sized, rounded up
-print(slots(sorted(src)))           # -> 100    sized, rounded up
-print(slots([*src]))                # -> 100
-print(slots([x for x in src]))      # -> 108    grown
-print(slots(list(map(str, src))))   # -> 108    grown
-print(slots(txt.split()))           # -> 112    grown
+print(capacity(src[:]))                # -> 99     exact
+print(capacity(src[:50] + src[50:]))   # -> 99     exact
+print(capacity(list(src)))             # -> 100    sized, rounded up
+print(capacity(sorted(src)))           # -> 100    sized, rounded up
+print(capacity([*src]))                # -> 100
+print(capacity([x for x in src]))      # -> 108    grown
+print(capacity(list(map(str, src))))   # -> 108    grown
+print(capacity(txt.split()))           # -> 112    grown
 ```
 
 `sorted()` builds its result with the sized constructor path and then sorts in place, so it lands
@@ -1473,10 +1462,13 @@ flat = list(range(R * C))
 nested = [[r * C + c for c in range(C)] for r in range(R)]
 
 print(flat[0 * C + 5])      # -> 5     column 5 of a 4-column grid, silently row 1
-nested[0][5]                # IndexError: list index out of range
-
 print(flat[1 * C + -1])     # -> 3     a negative column walks into the previous row
-print(nested[1][-1])        # -> 7
+
+try:
+    nested[0][5]            # the nested form refuses the same column
+except IndexError as e:
+    print(e)                # -> list index out of range
+print(nested[1][-1])        # -> 7     and reads a negative one as its own last element
 ```
 
 That is the real price: the nested form validates the column for free on every access, and the
@@ -4225,23 +4217,23 @@ def peak(expression):
     tracemalloc.stop()
     return high
 
-print(peak(lambda a: a[:]))          # -> 800008
+print(peak(lambda a: a[:]))          # -> 800000
 print(peak(lambda a: a.reverse()))   # -> 0
-print(peak(lambda a: sorted(a)))     # -> 1199840
-print(peak(lambda a: a + a))         # -> 1600008
+print(peak(lambda a: sorted(a)))     # -> 1199832
+print(peak(lambda a: a + a))         # -> 1600000
 ```
 
 The full set of results on that 100,000-element list:
 
 | Expression | Peak extra bytes | In place? |
 |---|---|---|
-| `nums[:]` | 800,008 | no — a new list |
-| `nums[::-1]` | 800,008 | no — a new list |
+| `nums[:]` | 800,000 | no — a new list |
+| `nums[::-1]` | 800,000 | no — a new list |
 | `nums.reverse()` | 0 | yes |
 | `reversed(nums)` | 48 | no, and no copy either |
-| `sorted(nums)` | 1,199,840 | no — the copy plus a merge buffer |
+| `sorted(nums)` | 1,199,832 | no — the copy plus a merge buffer |
 | `nums.sort()` | 399,832 | yes — merge buffer only |
-| `nums + nums` | 1,600,008 | no — a third list |
+| `nums + nums` | 1,600,000 | no — a third list |
 
 Read those against 800,000 bytes, which is what 100,000 pointers occupy. A copy costs exactly one
 list; `sorted()` costs a copy plus a merge buffer of up to half the list; `sort()` pays only the
@@ -5576,12 +5568,24 @@ thing being measured. And the two `perf_counter_ns` calls themselves cost more t
 does, so even the smallest reading is mostly measurement apparatus.
 
 **A single reading gives you your operation plus the clock plus whatever else the machine chose to
-do during that microsecond, with no way to separate them.** The real cost of that index, measured
-properly, is 7.79 nanoseconds — under one tick of the clock you tried to read it with.
+do during that microsecond, with no way to separate them.** Measured properly, that index costs
+5.6 nanoseconds — section 8's reference figure for one interpreted element read. It is under one
+tick of the clock you just tried to read it with, which is why no arrangement of `perf_counter_ns`
+calls around it could ever have found it.
 
-The fix is to run the operation many times inside one timed region, so the per-operation cost is a
-division rather than a clock reading, and then to do that whole thing several times, so you can see
-the spread. That is what `timeit` is for.
+One detail about that constant is worth pinning down here, since this section is about method.
+Section 8 built its list inside `timeit`'s `setup` string, which makes `nums` a local of the
+generated timing loop, so the read compiles to `LOAD_FAST_BORROW`. Hand the same statement
+`globals=globals()` instead and `nums` is a module global, so the read compiles to `LOAD_GLOBAL` —
+and that difference alone is worth a quarter of the total. Twelve reruns of each on this machine put
+the local form at 4.9 ns and the global form at 6.2 ns as minima, with the global form slower in all
+twelve. Neither number is wrong; they are timings of two different pieces of bytecode.
+**The chapter's 5.6 ns reference is the `setup`-string form, and a timing is comparable only with
+another timing taken the same way.**
+
+The fix for the single reading is to run the operation many times inside one timed region, so the
+per-operation cost is a division rather than a clock reading, and then to do that whole thing several
+times, so you can see the spread. That is what `timeit` is for.
 
 ### `timeit.repeat`, and why you quote the minimum
 
@@ -5613,7 +5617,7 @@ code plus the machine's mood. A minimum estimates your code.
 Two honest qualifications. The minimum is optimistic by construction — it is the run that got the
 warmest caches and the luckiest scheduling, so it is a floor on cost, not a typical cost. And it
 discards exactly the information a latency budget needs: section 7's worst single `append` took some
-five thousand times the median, and no minimum would ever have shown you that. When tail behaviour
+three thousand times the median, and no minimum would ever have shown you that. When tail behaviour
 is the question, look at the maximum on purpose.
 
 One thing `timeit` does silently is worth knowing. It disables the cyclic garbage collector for the
@@ -6026,7 +6030,7 @@ grid = [[(r, g, 0) for g in range(200)] for r in range(200)]
 current, peak = tracemalloc.get_traced_memory()
 tracemalloc.stop()
 
-print(current, peak)          # -> 3212160 3212160
+print(current, peak)          # -> 3212160 3212160   (see the note below on that first pair)
 print(sys.getsizeof(grid))    # -> 1656
 print(total_size(grid))       # -> 3218456
 ```
@@ -6034,6 +6038,16 @@ print(total_size(grid))       # -> 3218456
 A 1656-byte object by the shallow measure, 3.2 MB in fact, and the recursive helper agreed with the
 allocator to within 0.2%. Current equals peak here because nothing temporary was built; when the two
 differ, the gap is the copy you did not know you were making.
+
+That first pair is the one figure in this chapter whose last digits depend on your session rather
+than on the grid, and the reason is instructive rather than annoying. `tracemalloc` charges only
+what was allocated after `start()`, so anything the grid needed that your session had already built
+— a cached object, a block the allocator can hand back from a free list — is not charged again.
+Run the blocks of this subsection in order, as printed, and 3,212,160 comes back every time. Run
+this block alone in a fresh interpreter and it is 3,212,448; run it straight after the `total_size`
+definition and nothing else and it is 3,212,048. The megabyte is the measurement. The last three
+digits are a record of what your session did first, which is exactly why *peak against current* is
+the part of this pair worth reading and the absolute total is not.
 
 ### The tool behind the instruction listings
 
@@ -6207,7 +6221,8 @@ interpreter you measured on.
 ### The discipline
 
 **Measure on the interpreter you will run on.** Every number in this chapter is CPython 3.14.4 on
-arm64, and that qualification is part of the measurement rather than a disclaimer bolted to it.
+arm64 — on the lock build, except for the free-threaded column section 2 puts beside it and labels
+as such — and that qualification is part of the measurement rather than a disclaimer bolted to it.
 Version to version, the set of specialised instructions above changes and so does the cost of a
 Python-level loop; machine to machine, cache sizes move the point at which locality starts to
 dominate. Print the provenance next to the result and you will never have to wonder later which run
@@ -6747,8 +6762,8 @@ Conclusion 2 is not supported either, and it is wrong by a factor of thirty. Tha
 `nums[999]` is almost entirely apparatus: `time.get_clock_info("perf_counter").resolution` is
 41.7 ns on this machine, so every reading is a multiple of it, and five trials of the same three
 lines gave subscript readings of 166, 166, 125, 83 and 83 — quantised, and dominated by the two
-clock calls that bracket the operation. The real figure is 5.3 ns. Against a scan of roughly
-5.5 µs that is a thousandfold, not thirty-five-fold.
+clock calls that bracket the operation. The real figure is the chapter's reference cost of one
+element read, 5.6 ns. Against a scan of roughly 5.5 µs that is a thousandfold, not thirty-five-fold.
 
 Conclusion 3 survives because the gap it claims is three orders of magnitude wide, and no amount of
 clock noise or scheduling luck at this scale closes it. That is the rule the drill is for: a single

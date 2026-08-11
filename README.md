@@ -9,7 +9,7 @@ cost, the complete operation cost model, aliasing, the other container types, an
 all of it yourself. Every claim in it was verified by execution: 273 runnable code blocks, every
 `# -> value` a real observed result on this machine.
 
-You should never need to open a browser to use this repo.
+You should never need to visit a website to use this repo.
 
 ## Layout
 
@@ -34,19 +34,36 @@ cannot drift from reality. Reading progress is ticked off in the browser and per
 
 Regenerate any time with `uv run python dashboard.py`. Use `--fast` to skip the test run.
 
+`--serve` uses port 8765, and walks up to the next free port if that one is busy — usually
+because a dashboard from an earlier run is still serving. `--port N` pins it to a port you pick.
+
 ## Running
 
-Everything:
+One problem, stopping at the first failure — the command you will use most:
+
+```bash
+uv run pytest tests/ch01/test_p01_max_consecutive_ones.py -x
+```
+
+Add `-vv` for a line per test instead of progress characters. It has to be `-vv`, not `-v`:
+the config sets `-q`, pytest sums verbosity levels, and `-q -v` cancels back out to normal.
+
+```bash
+uv run pytest tests/ch01/test_p01_max_consecutive_ones.py -vv
+```
+
+Everything, once you have solutions to check:
 
 ```bash
 uv run pytest
 ```
 
-One problem, verbose:
-
-```bash
-uv run pytest tests/ch01/test_p01_max_consecutive_ones.py -v
-```
+Expect this to be loud on a fresh clone — hundreds of lines, every failure the identical
+`NotImplementedError` from an untouched stub. `uv run pytest --tb=no` gives you just the one-line
+summary. The lone `passed` in that summary is not a solved problem: it is
+`test_p03_squares_of_sorted_array.py::test_linear_does_not_sort`, which only asserts that
+`sortedSquares` never calls `sorted()` — vacuously true while the body is still `raise
+NotImplementedError`.
 
 Stop at the first failure and drop into a debugger:
 

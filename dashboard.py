@@ -1,13 +1,22 @@
 #!/usr/bin/env python3
 """Generate dashboard.html — a live map of what to read, code, and experiment with next.
 
-Everything shown is read from the repo at generation time: the section list comes from
-notes/, problem status comes from actually running the test suite, and the chapter map
-comes from which directories exist. Nothing is hardcoded, so it cannot drift.
+Everything shown is read from the repo at generation time: the section list and the counts
+quoted on the page come from notes/, problem status comes from actually running the whole
+test suite, and the chapter map comes from which directories exist. The figures are counted
+from the files rather than typed in, so they cannot drift.
 
     uv run python dashboard.py          # regenerate, running the tests
-    uv run python dashboard.py --fast   # regenerate, skip the tests
+    uv run python dashboard.py --fast   # regenerate, reusing the last live test run
     uv run python dashboard.py --serve  # regenerate, then serve it and open a browser
+    uv run python dashboard.py --serve --port 9000   # ... on a port you pick
+
+--serve defaults to port 8765 and walks upward to the next free port if that one is taken,
+which usually means a dashboard from an earlier run is still serving.
+
+--fast does not invent a status. The last live (passed, failed) per problem is cached inside
+dashboard.html itself, restored on the next --fast run, and the page says how old it is. A
+problem whose stub has changed since that run reverts to "unknown" rather than lying.
 
 Reading progress is the one thing the repo cannot know, so it lives in your browser's
 localStorage and survives regeneration. Prefer --serve: some browsers refuse to persist
@@ -16,15 +25,27 @@ localStorage for pages opened directly from disk, which would silently lose your
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
+from xml.etree import ElementTree
 
 ROOT = Path(__file__).parent
 WPM = 130  # technical prose with code blocks reads slower than it looks
+DEFAULT_PORT = 8765
+# Editorial judgement, and the one number here the files cannot supply: the sections that
+# carry the model everything later depends on, and so are worth reading before coding.
+CORE_SECTIONS = 7
+# The last live test run rides along inside the page it produced, so --fast has something
+# true to show and no extra file has to appear in the working tree.
+CACHE_RE = re.compile(r'<script type="application/json" id="cache">(.*?)</script>', re.S)
 
 
 # --------------------------------------------------------------------------- model
@@ -36,10 +57,19 @@ class Section:
     title: str
     words: int
     subsections: int
+    code_blocks: int = 0
+    drills: int = 0
 
     @property
     def minutes(self) -> int:
         return max(1, round(self.words / WPM))
+
+    @property
+    def html_id(self) -> str:
+        """Reading-progress key. Hashed from the title, so a tick follows its section when
+        the notes are renumbered instead of silently landing on whatever is now in slot n."""
+        return "s" + hashlib.sha1(self.title.encode("utf-8"),
+                                  usedforsecurity=False).hexdigest()[:8]
 
 
 @dataclass
@@ -89,50 +119,108 @@ CHAPTER_NAMES = {
 
 
 def parse_sections(path: Path) -> list[Section]:
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     parts = re.split(r"^## (\d+)\. (.+)$", text, flags=re.M)
     out: list[Section] = []
     for i in range(1, len(parts), 3):
         num, title, body = int(parts[i]), parts[i + 1], parts[i + 2]
-        out.append(Section(num, title, len(body.split()), body.count("\n### ")))
+        out.append(Section(
+            num, title, len(body.split()), body.count("\n### "),
+            code_blocks=len(re.findall(r"^```python\b", body, flags=re.M)),
+            drills=len({int(d) for d in re.findall(r"\bDrill (\d+)\b", body)}),
+        ))
     return out
 
 
 def docstring_header(stub: Path) -> tuple[str, str, str]:
     """Pull '485. Max Consecutive Ones  (Easy)' out of the module docstring."""
-    first = stub.read_text().lstrip('"').splitlines()[0].strip()
+    first = stub.read_text(encoding="utf-8").lstrip('"').splitlines()[0].strip()
     m = re.match(r"(\d+)\.\s+(.+?)\s*\((\w+)\)", first)
     if m:
         return m.group(1), m.group(2), m.group(3)
     return "?", stub.stem, "?"
 
 
-def run_tests(test_file: Path) -> tuple[int, int, bool]:
-    """Return (passed, failed, unknown) by actually running pytest."""
-    # Note: pyproject's addopts already supplies -q. Passing it again makes it -qq, which
-    # suppresses the summary counts line entirely — so don't, and scan the whole output
-    # rather than just the last line, which may well be a FAILED row.
+def read_junit(report: Path) -> tuple[int, int] | None:
+    """(passed, failed) out of pytest's own XML report, or None if there isn't one."""
     try:
-        r = subprocess.run(
-            ["uv", "run", "pytest", str(test_file), "-m", "not slow", "--no-header", "--tb=no"],
-            cwd=ROOT, capture_output=True, text=True, timeout=300,
-        )
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        root = ElementTree.parse(report).getroot()
+        suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+        total = bad = skipped = 0
+        for suite in suites:
+            total += int(suite.get("tests", "0"))
+            bad += int(suite.get("failures", "0")) + int(suite.get("errors", "0"))
+            skipped += int(suite.get("skipped", "0"))
+    except (OSError, ElementTree.ParseError, TypeError, ValueError):
+        return None
+    return max(total - bad - skipped, 0), bad
+
+
+def run_tests(test_file: Path) -> tuple[int, int, bool]:
+    """Return (passed, failed, unknown) by actually running pytest.
+
+    The whole file runs, slow tier included: the slow tests are precisely the ones that
+    catch a quadratic solution, so excluding them would let the page say "passing" about a
+    suite that is red the moment you run it yourself.
+
+    Counts come from pytest's machine-readable report rather than from its prose. Scanning
+    stdout reads the first "N passed" anywhere in the output, and pytest prints its FAILED
+    rows — test ids, assertion reprs — above the summary line.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        report = Path(tmp) / "report.xml"
+        try:
+            r = subprocess.run(
+                ["uv", "run", "pytest", str(test_file), "--no-header", "--tb=no",
+                 f"--junit-xml={report}"],
+                cwd=ROOT, capture_output=True, text=True, timeout=300,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            return 0, 0, True
+        counts = read_junit(report)
+    # 0 = all passed, 1 = tests failed. 2 interrupted, 3 internal error, 4 usage error and
+    # 5 nothing collected all mean the run never produced a verdict worth showing.
+    if counts is None or r.returncode not in (0, 1):
         return 0, 0, True
-    passed = int(m.group(1)) if (m := re.search(r"(\d+) passed", r.stdout)) else 0
-    failed = int(m.group(1)) if (m := re.search(r"(\d+) failed", r.stdout)) else 0
-    errors = int(m.group(1)) if (m := re.search(r"(\d+) error", r.stdout)) else 0
-    return passed, failed + errors, not (passed or failed or errors)
+    passed, failed = counts
+    return (passed, failed, False) if passed or failed else (0, 0, True)
 
 
-def discover(run: bool) -> list[Chapter]:
+def stub_fingerprint(stub: Path) -> str:
+    """Cheap 'has this changed since the last test run' marker."""
+    try:
+        st = stub.stat()
+    except OSError:
+        return ""
+    return f"{st.st_size}:{st.st_mtime_ns}"
+
+
+def read_cache() -> tuple[str, dict[str, dict]]:
+    """Reload the last live test run from the page that run produced."""
+    out = ROOT / "dashboard.html"
+    if not out.exists():
+        return "", {}
+    try:
+        m = CACHE_RE.search(out.read_text(encoding="utf-8"))
+        blob = json.loads(m.group(1)) if m else {}
+        return str(blob.get("at", "")), {
+            str(slug): {"passed": int(v["passed"]), "failed": int(v["failed"]),
+                        "stub": str(v["stub"])}
+            for slug, v in dict(blob.get("problems", {})).items()
+        }
+    except (OSError, UnicodeDecodeError, AttributeError, TypeError, ValueError, KeyError):
+        return "", {}
+
+
+def discover(run: bool, cached: dict[str, dict] | None = None) -> list[Chapter]:
+    cached = cached or {}
     chapters: list[Chapter] = []
     for num, name in CHAPTER_NAMES.items():
         ch = Chapter(num, name)
 
         for note in sorted((ROOT / "notes").glob(f"{num:02d}_*.md")):
             ch.notes = str(note.relative_to(ROOT))
-            ch.note_words = len(note.read_text().split())
+            ch.note_words = len(note.read_text(encoding="utf-8").split())
 
         hints = ROOT / "hints" / f"ch{num:02d}.md"
         if hints.exists():
@@ -140,21 +228,26 @@ def discover(run: bool) -> list[Chapter]:
 
         src = ROOT / ".leetcode-source"
         ch.source_captured = num == 1 or any(
-            f"CHAPTER {num} " in p.read_text() for p in src.glob("*.md")
+            f"CHAPTER {num} " in p.read_text(encoding="utf-8") for p in src.glob("*.md")
         ) if src.exists() else False
 
         for stub in sorted((ROOT / "arrays101" / f"ch{num:02d}").glob("p*.py")):
             number, title, diff = docstring_header(stub)
             test = ROOT / "tests" / f"ch{num:02d}" / f"test_{stub.stem}.py"
-            started = "NotImplementedError" not in stub.read_text()
+            started = "NotImplementedError" not in stub.read_text(encoding="utf-8")
             p = Problem(
                 slug=stub.stem, number=number, title=title, difficulty=diff,
                 stub=str(stub.relative_to(ROOT)),
                 test=str(test.relative_to(ROOT)) if test.exists() else "",
                 started=started,
             )
+            # --fast reuses the last live run, but only while the stub it was measured
+            # against is untouched. An edited stub means we genuinely do not know.
+            hit = None if run else cached.get(p.slug)
             if run and test.exists():
                 p.passed, p.failed, p.unknown = run_tests(test)
+            elif hit and hit["stub"] == stub_fingerprint(stub):
+                p.passed, p.failed, p.unknown = hit["passed"], hit["failed"], False
             else:
                 p.unknown = True
             ch.problems.append(p)
@@ -205,7 +298,7 @@ a{color:var(--accent)}
 .sec:hover{background:var(--bg)}
 .sec input{margin:3px 0 0;accent-color:var(--accent);cursor:pointer;flex:none;width:15px;height:15px}
 .sec .n{color:var(--dim);font-variant-numeric:tabular-nums;flex:none;width:20px;font-size:13px}
-.sec .t{flex:1;min-width:0}
+.sec .t{flex:1;min-width:0;overflow-wrap:anywhere}
 .sec .m{color:var(--dim);font-size:12px;flex:none;font-variant-numeric:tabular-nums}
 .sec.done .t{opacity:.45;text-decoration:line-through}
 .prob{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--line)}
@@ -213,13 +306,14 @@ a{color:var(--accent)}
 .dot{width:9px;height:9px;border-radius:99px;flex:none;background:var(--dim)}
 .dot.green{background:var(--green)} .dot.started{background:var(--amber)} .dot.todo{background:var(--line);
   border:1.5px solid var(--dim)}
-.prob .meta{flex:1;min-width:0}
+.prob .meta{flex:1;min-width:0;overflow-wrap:anywhere}
 .prob .meta b{font-weight:600} .prob .meta small{display:block;color:var(--dim);font-size:12.5px;margin-top:2px}
 .pill{font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--dim);flex:none}
 .pill.green{color:var(--green);border-color:var(--green)}
 .pill.started{color:var(--amber);border-color:var(--amber)}
 pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px 12px;
   overflow-x:auto;margin:10px 0 0;font-size:12.5px}
+.tscroll{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:13.5px}
 th{text-align:left;font-weight:600;color:var(--dim);font-size:11px;text-transform:uppercase;
    letter-spacing:.07em;padding:0 10px 8px 0;border-bottom:1px solid var(--line)}
@@ -233,9 +327,23 @@ tr:last-child td{border-bottom:0}
 
 JS = """
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const KEY='arrays101.read.v1';
-const read=()=>{try{return new Set(JSON.parse(localStorage.getItem(KEY)||'[]'))}catch{return new Set()}};
+const KEY='arrays101.read.v2', OLD='arrays101.read.v1';
 const save=s=>localStorage.setItem(KEY,JSON.stringify([...s]));
+
+// v1 keyed a tick to the section's position, so inserting a section handed your tick to
+// whatever moved into that slot. v2 keys on a hash of the title. Carry v1 over once, by
+// position, which is what it meant at the time it was written.
+function read(){
+  try{
+    const cur=localStorage.getItem(KEY);
+    if(cur!==null) return new Set(JSON.parse(cur));
+    const old=localStorage.getItem(OLD);
+    if(old===null) return new Set();
+    const was=new Set(JSON.parse(old));
+    const now=new Set($$('.sec').filter(el=>was.has(el.dataset.legacy)).map(el=>el.dataset.id));
+    save(now); return now;
+  }catch{return new Set()}
+}
 
 function paint(){
   const done=read();
@@ -250,13 +358,22 @@ function paint(){
 }
 
 function hero(done){
-  const first=$$('.sec').find(el=>!done.has(el.dataset.id));
-  const prob=DATA.problems.find(p=>p.state!=='green');
+  const secs=$$('.sec');
+  const core=Math.min(DATA.core,secs.length);
+  const unread=secs.filter(el=>!done.has(el.dataset.id));
+  // Gate on the core sections themselves, not on a count of any seven: ticking §6–§12
+  // leaves the sections this very sentence calls the core unread.
+  const coreLeft=unread.filter(el=>+el.dataset.num<=core);
+  const next=unread[0];
+  const probs=DATA.problems;
+  const prob=probs.find(p=>p.state!=='green'&&p.state!=='unknown');
+  const stale=probs.filter(p=>p.state==='unknown');
   let lbl,h,p,cmd;
-  if(first && $$('.sec.done').length < 7){
+  if(coreLeft.length){
+    const s=coreLeft[0];
     lbl='Read next';
-    h=`§${first.dataset.num}. ${first.dataset.title}`;
-    p=`${first.dataset.words} words, about ${first.dataset.min} minutes. Sections 1–7 are the core and are best read in order.`;
+    h=`§${s.dataset.num}. ${s.dataset.title}`;
+    p=`${s.dataset.words} words, about ${s.dataset.min} minutes. Sections 1–${core} are the core and are best read in order.`;
     cmd='open notes/01_introduction.md';
   }else if(prob){
     lbl = prob.state==='started' ? 'Keep going' : 'Start coding';
@@ -264,28 +381,42 @@ function hero(done){
     p = prob.state==='started'
       ? `${prob.passed} passing, ${prob.failed} failing. Run with -x to get one focused traceback.`
       : `Read the docstring, then replace the raise. The tests are the spec.`;
-    cmd=`uv run pytest ${prob.test} -x`;
-  }else if(first){
+    cmd = prob.test ? `uv run pytest ${prob.test} -x` : 'uv run pytest';
+  }else if(next){
     lbl='Read next';
-    h=`§${first.dataset.num}. ${first.dataset.title}`;
-    p=`${first.dataset.words} words, about ${first.dataset.min} minutes.`;
+    h=`§${next.dataset.num}. ${next.dataset.title}`;
+    p=`${next.dataset.words} words, about ${next.dataset.min} minutes.`;
     cmd='open notes/01_introduction.md';
-  }else{
+  }else if(stale.length){
+    lbl='Test status unknown';
+    h=`${stale.length} of ${probs.length} problems were not checked`;
+    p='This page was built with --fast and has no live result for them, so nothing here knows whether they pass. Regenerate to actually run the suite.';
+    cmd='uv run python dashboard.py';
+  }else if(probs.length){
     lbl='Chapter 1 complete';
     h='Ask for a review, then Chapter 2';
-    p='All three problems are green and every section is read. The review conversation is where most of the remaining learning is.';
+    p=`All ${probs.length} problems are green and every section is read. The review conversation is where most of the remaining learning is.`;
     cmd='git add -A && git commit -m "Chapter 1 complete"';
+  }else{
+    lbl='No problems found';
+    h='Nothing to code in arrays101/ch01/';
+    p='Every section is read, but the generator found no p*.py stubs to work on. If that is a surprise, the directory is the place to look.';
+    cmd='ls arrays101/ch01/';
   }
   $('#hl').textContent=lbl; $('#hh').textContent=h; $('#hp').textContent=p; $('#hc').textContent=cmd;
 }
 
-document.addEventListener('click',e=>{
-  const sec=e.target.closest('.sec'); if(!sec) return;
-  if(e.target.tagName!=='INPUT') e.preventDefault();
-  const done=read(), id=sec.dataset.id;
-  done.has(id)?done.delete(id):done.add(id); save(done); paint();
+// The rows are <label>s, so the browser does the toggling and the whole row is a real
+// click target with a real accessible name. All this has to do is record the result.
+document.addEventListener('change',e=>{
+  const box=e.target;
+  if(!box.matches('.sec input[type=checkbox]')) return;
+  const done=read(), id=box.closest('.sec').dataset.id;
+  box.checked?done.add(id):done.delete(id); save(done); paint();
 });
-$('#reset').addEventListener('click',()=>{localStorage.removeItem(KEY);paint()});
+$('#reset').addEventListener('click',e=>{
+  e.preventDefault(); localStorage.removeItem(KEY); localStorage.removeItem(OLD); paint();
+});
 $('.toggle').addEventListener('click',()=>{
   const r=document.documentElement;
   const now=r.dataset.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
@@ -296,21 +427,37 @@ paint();
 
 
 def esc(s: str) -> str:
-    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    """HTML-escape, quotes included: most of these land inside an attribute."""
+    return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+             .replace('"', "&quot;").replace("'", "&#39;"))
 
 
-def render(chapters: list[Chapter], sections: list[Section], ran: bool) -> str:
+def link(path: str) -> str:
+    """A path, safe both as a URL and as an attribute value."""
+    return esc(quote(path))
+
+
+def js_json(obj: object) -> str:
+    """JSON for embedding in a <script>. < > & become \\uXXXX escapes — still valid JSON,
+    still the same string after parsing, but no title can close the script element."""
+    return (json.dumps(obj)
+            .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"))
+
+
+def render(chapters: list[Chapter], sections: list[Section], ran: bool,
+           cache: dict) -> str:
     ch1 = chapters[0]
     total_words = sum(s.words for s in sections)
     total_min = sum(s.minutes for s in sections)
 
     secs = "\n".join(
-        f'<div class="sec" data-id="s{s.num}" data-num="{s.num}" data-title="{esc(s.title)}" '
-        f'data-words="{s.words:,}" data-min="{s.minutes}">'
-        f'<input type="checkbox"><span class="n">{s.num}</span>'
+        f'<label class="sec" data-id="{s.html_id}" data-legacy="s{s.num}" data-num="{s.num}" '
+        f'data-title="{esc(s.title)}" data-words="{s.words:,}" data-min="{s.minutes}">'
+        f'<input type="checkbox" aria-label="Mark section {s.num}, {esc(s.title)}, as read">'
+        f'<span class="n">{s.num}</span>'
         f'<span class="t">{esc(s.title)}<br><small style="color:var(--dim);font-size:12px">'
         f"{s.subsections} subsections &middot; {s.words:,} words</small></span>"
-        f'<span class="m">{s.minutes}m</span></div>'
+        f'<span class="m">{s.minutes}m</span></label>'
         for s in sections
     )
 
@@ -318,15 +465,15 @@ def render(chapters: list[Chapter], sections: list[Section], ran: bool) -> str:
         label = {"green": "passing", "started": f"{p.failed} failing", "todo": "not started",
                  "unknown": "unknown"}[p.state]
         cls = p.state if p.state in ("green", "started") else ""
-        links = f'<a href="{p.stub}">stub</a>'
+        links = f'<a href="{link(p.stub)}">stub</a>'
         if p.test:
-            links += f' &middot; <a href="{p.test}">tests</a>'
+            links += f' &middot; <a href="{link(p.test)}">tests</a>'
         if ch1.hints:
-            links += f' &middot; <a href="{ch1.hints}">hints</a>'
+            links += f' &middot; <a href="{link(ch1.hints)}">hints</a>'
         return (
             f'<div class="prob"><span class="dot {p.state}"></span>'
-            f'<span class="meta"><b>{p.number}. {esc(p.title)}</b>'
-            f"<small>{p.difficulty} &middot; {links}</small></span>"
+            f'<span class="meta"><b>{esc(p.number)}. {esc(p.title)}</b>'
+            f"<small>{esc(p.difficulty)} &middot; {links}</small></span>"
             f'<span class="pill {cls}">{label}</span></div>'
         )
 
@@ -343,13 +490,37 @@ def render(chapters: list[Chapter], sections: list[Section], ran: bool) -> str:
         for c in chapters
     )
 
-    data = json.dumps({"problems": [
+    data = js_json({"core": CORE_SECTIONS, "problems": [
         {"number": p.number, "title": p.title, "state": p.state, "passed": p.passed,
          "failed": p.failed, "test": p.test, "stub": p.stub}
         for p in ch1.problems
     ]})
 
-    status = "live from pytest" if ran else "cached — rerun without --fast for live test status"
+    if ran:
+        status = "live from pytest"
+    elif any(p.state != "unknown" for p in ch1.problems) and cache.get("at"):
+        status = f"as of {esc(str(cache['at']))} &mdash; rerun without --fast for live status"
+    else:
+        status = "not measured &mdash; rerun without --fast for live test status"
+
+    # Everything the Experiment cards claim about the chapter, counted from the chapter.
+    blocks = sum(s.code_blocks for s in sections)
+    drilled = max(sections, key=lambda s: s.drills, default=None)
+    measuring = next((s for s in sections if re.search(r"measur", s.title, re.I)), None)
+    drills_copy = (
+        f"&sect;{drilled.num} is {drilled.drills} predict-the-output drills with an answer "
+        "key. The honest check on whether the rest landed."
+        if drilled and drilled.drills else
+        "The drills at the end of the chapter are the honest check on whether the rest landed."
+    )
+    measure_copy = (
+        f"&sect;{measuring.num} gives a reusable timing harness. Pick any claim in the "
+        "chapter and try to break it."
+        if measuring else
+        "Pick any claim in the chapter and try to break it with a timing harness of your own."
+    )
+    first_test = next((p.test for p in ch1.problems if p.test), "")
+    code_cmd = f"uv run pytest {first_test} -x" if first_test else "uv run pytest"
 
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -375,29 +546,30 @@ def render(chapters: list[Chapter], sections: list[Section], ran: bool) -> str:
 
 <h2>Code</h2>
 <div class="card">{probs}
-<pre>uv run pytest tests/ch01/test_p01_max_consecutive_ones.py -x</pre></div>
+<pre>{esc(code_cmd)}</pre></div>
 
 <h2>Experiment</h2>
 <div class="grid two">
   <div class="card"><b>Run the chapter</b>
-    <p style="color:var(--dim);font-size:13.5px;margin:6px 0 0">All 273 code blocks are runnable
-    exactly as written. Paste as you read.</p><pre>uv run python</pre></div>
+    <p style="color:var(--dim);font-size:13.5px;margin:6px 0 0">All {blocks:,} code blocks are
+    runnable exactly as written. Paste as you read.</p><pre>uv run python</pre></div>
   <div class="card"><b>Test yourself</b>
-    <p style="color:var(--dim);font-size:13.5px;margin:6px 0 0">&sect;12 is twelve predict-the-output
-    drills with an answer key. The honest check on whether the rest landed.</p>
+    <p style="color:var(--dim);font-size:13.5px;margin:6px 0 0">{drills_copy}</p>
     <pre>open notes/01_introduction.md</pre></div>
   <div class="card"><b>Measure something</b>
-    <p style="color:var(--dim);font-size:13.5px;margin:6px 0 0">&sect;11 gives a reusable timing
-    harness. Pick any claim in the chapter and try to break it.</p></div>
+    <p style="color:var(--dim);font-size:13.5px;margin:6px 0 0">{measure_copy}</p></div>
   <div class="card"><b>Check the whole suite</b>
-    <p style="color:var(--dim);font-size:13.5px;margin:6px 0 0">Slow tests included &mdash; a hang
-    there means your solution is quadratic.</p><pre>uv run pytest</pre></div>
+    <p style="color:var(--dim);font-size:13.5px;margin:6px 0 0">Every problem at once, slow tests
+    included &mdash; the same tests the status above comes from. A hang there means your solution
+    is quadratic.</p><pre>uv run pytest</pre></div>
 </div>
 
 <h2>Syllabus</h2>
 <div class="card">
+<div class="tscroll">
 <table><thead><tr><th>Chapter</th><th>Notes</th><th>Problems</th><th>Hints</th><th>Source</th></tr></thead>
 <tbody>{rows}</tbody></table>
+</div>
 </div>
 
 <p class="foot">Generated from the repo &mdash; sections, problems and test results are all read at
@@ -406,28 +578,87 @@ generation time. Reading progress is stored in this browser.
 Regenerate with <code>uv run python dashboard.py</code>.</p>
 
 </div>
+<script type="application/json" id="cache">{js_json(cache)}</script>
 <script>const DATA={data};{JS}</script></body></html>
 """
 
 
-def serve(port: int = 8765) -> None:
-    """Serve the repo so the dashboard gets a real origin, and open it."""
+def serve(port: int = DEFAULT_PORT, *, scan: bool = True, tries: int = 10) -> int:
+    """Serve the repo so the dashboard gets a real origin, and open it.
+
+    The overwhelmingly common reason the port is taken is a dashboard left serving from an
+    earlier run, so a busy default port walks upward to the next free one instead of dying
+    on a traceback. An explicit --port is taken literally: if it is busy, say so and stop.
+    """
+    import errno
     import functools
     import http.server
     import webbrowser
 
     handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(ROOT))
-    with http.server.ThreadingHTTPServer(("127.0.0.1", port), handler) as httpd:
-        url = f"http://127.0.0.1:{port}/dashboard.html"
+    httpd = None
+    for candidate in range(port, port + (tries if scan else 1)):
+        try:
+            httpd = http.server.ThreadingHTTPServer(("127.0.0.1", candidate), handler)
+        except OSError as exc:
+            if exc.errno not in (errno.EADDRINUSE, errno.EACCES):
+                raise
+        else:
+            break
+
+    if httpd is None:
+        where = f"http://127.0.0.1:{port}/dashboard.html"
+        busy = f"port {port} is" if not scan else f"ports {port}-{port + tries - 1} are"
+        print(f"{busy} in use; the dashboard may already be running at {where}", file=sys.stderr)
+        return 1
+
+    with httpd:
+        bound = httpd.server_address[1]
+        if bound != port:
+            print(f"port {port} is in use (the dashboard may already be running there) — "
+                  f"using {bound} instead", file=sys.stderr)
+        url = f"http://127.0.0.1:{bound}/dashboard.html"
         print(f"serving {url}  (ctrl-c to stop)", file=sys.stderr)
         webbrowser.open(url)
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
             print("\nstopped", file=sys.stderr)
+    return 0
+
+
+def parse_port(argv: list[str]) -> tuple[int, bool] | None:
+    """Read --port N / --port=N. Returns (port, scan_upward_if_busy), or None if malformed."""
+    for i, arg in enumerate(argv):
+        if arg == "--port":
+            raw = argv[i + 1] if i + 1 < len(argv) else ""
+        elif arg.startswith("--port="):
+            raw = arg.split("=", 1)[1]
+        else:
+            continue
+        try:
+            value = int(raw)
+        except ValueError:
+            print(f"--port wants a port number, got {raw!r}", file=sys.stderr)
+            return None
+        if not 1 <= value <= 65535:
+            print(f"--port must be between 1 and 65535, got {value}", file=sys.stderr)
+            return None
+        return value, False
+    return DEFAULT_PORT, True
 
 
 def main() -> int:
+    # The notes and this script's own output are UTF-8 whatever the locale says.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError, ValueError):
+            pass
+
+    parsed = parse_port(sys.argv[1:])
+    if parsed is None:
+        return 2
     run = "--fast" not in sys.argv
     notes = ROOT / "notes" / "01_introduction.md"
     if not notes.exists():
@@ -435,15 +666,46 @@ def main() -> int:
         return 1
     if run:
         print("running tests for live status ...", file=sys.stderr)
-    sections = parse_sections(notes)
-    chapters = discover(run)
+
     out = ROOT / "dashboard.html"
-    out.write_text(render(chapters, sections, run))
-    done = sum(1 for p in chapters[0].problems if p.state == "green")
-    print(f"wrote {out.relative_to(ROOT)} — {len(sections)} sections, "
-          f"{done}/{len(chapters[0].problems)} problems green")
+    cached_at, cached = read_cache()          # before the page it lives in is replaced
+    sections = parse_sections(notes)
+    chapters = discover(run, cached)
+    ch1 = chapters[0]
+    if run:
+        cache = {"at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                 "problems": {p.slug: {"passed": p.passed, "failed": p.failed,
+                                       "stub": stub_fingerprint(ROOT / p.stub)}
+                              for p in ch1.problems if not p.unknown}}
+    else:
+        cache = {"at": cached_at, "problems": cached}
+
+    # Write beside the page and rename over it: a failure part-way through leaves the
+    # previous dashboard intact instead of truncating it to garbage.
+    tmp = out.with_suffix(".html.tmp")
+    try:
+        tmp.write_text(render(chapters, sections, run, cache), encoding="utf-8")
+    except OSError as exc:
+        tmp.unlink(missing_ok=True)
+        print(f"could not write {out.name}: {exc}\nthe previous page is untouched",
+              file=sys.stderr)
+        return 1
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    tmp.replace(out)
+
+    green = sum(1 for p in ch1.problems if p.state == "green")
+    unsure = sum(1 for p in ch1.problems if p.state == "unknown")
+    if ch1.problems and unsure == len(ch1.problems):
+        tally = f"{len(ch1.problems)} problems, test status unknown"
+    else:
+        tally = f"{green}/{len(ch1.problems)} problems green"
+        tally += f", {unsure} unknown" if unsure else ""
+    print(f"wrote {out.relative_to(ROOT)} — {len(sections)} sections, {tally}")
     if "--serve" in sys.argv:
-        serve()
+        port, scan = parsed
+        return serve(port, scan=scan)
     return 0
 
 
