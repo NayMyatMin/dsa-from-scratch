@@ -33,8 +33,8 @@ This problem is split into two methods on purpose. Do them in order.
                          The test suite reads this method's source and FAILS it if it finds
                          sorted() or .sort(), so you can't accidentally pass with the naive
                          version. That guard is deliberate: the O(n) approach here is the
-                         first genuinely non-obvious technique in the card, and it reappears
-                         in Chapter 5.
+                         first genuinely non-obvious technique in the syllabus, and it
+                         reappears in Chapter 5.
 
 The input is already sorted. That fact is the entire problem — a solution that starts by
 sorting has thrown away the only thing it was given.

@@ -1,22 +1,25 @@
 # Arrays 101 — in Python 3
 
-Working through LeetCode's [Arrays 101 explore
-card](https://leetcode.com/explore/fun-with-arrays/card/fun-with-arrays/), translated from its
-Java originals into Python 3.14.
+The nineteen problems of LeetCode's Arrays 101 syllabus, worked in Python 3.14, with the theory
+rewritten from scratch as a standalone Python course.
 
-The card teaches *Java* arrays: fixed size, explicit capacity, manual element shifting. Python has
-none of that at the surface. Rather than skip the mismatch, `notes/` makes it the subject —
-because "why does Python not need `capacity`?" has a real answer involving how CPython's `list`
-actually works, and knowing it changes the code you write.
+`notes/` owes nothing to any website. Chapter 1 is ~49,000 words on what a `list` actually is —
+object layout, slicing semantics in full, the iterator protocol, over-allocation and amortized
+cost, the complete operation cost model, aliasing, the other container types, and how to measure
+all of it yourself. Every claim in it was verified by execution: 273 runnable code blocks, every
+`# -> value` a real observed result on this machine.
+
+You should never need to open a browser to use this repo.
 
 ## Layout
 
 ```
-notes/       Theory, one file per chapter. Read this first.
-arrays101/   Your solutions. Stubs raise NotImplementedError.
-tests/       The spec. Edge cases + randomized property tests.
-hints/       Tiered hints. Open only when stuck, one tier at a time.
-PROGRESS.md  Tracker for the 19 problems in the card.
+notes/             The course. Read this first. Standalone — no external reading required.
+arrays101/         Your solutions. Stubs raise NotImplementedError.
+tests/             The spec. Edge cases + randomized property tests.
+hints/             Tiered hints. Open only when stuck, one tier at a time.
+PROGRESS.md        Tracker for the 19 problems.
+.leetcode-source/  Raw source capture. Authoring input, spoiler-dense — not for reading.
 ```
 
 ## Running

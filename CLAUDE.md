@@ -40,10 +40,23 @@ solution, cover:
 
 ## Python-only, and mean it
 
-The explore card's own snippets are Java. Translate concepts, never transcribe them. Where Python
-diverges from the card's mental model (fixed-size arrays, capacity vs length, manual shifting),
-say so directly — those divergences are the most valuable material in this repo, and they live in
-`notes/`.
+`notes/` is **standalone Python 3**. Three rules, and they are not negotiable:
+
+1. **No cross-language comparison, ever.** Never mention Java, C#, JavaScript, Go, Rust, or "other
+   languages" generically. The source card is written around a different array model; where an
+   insight originated as a contrast, re-express it as a direct positive statement about Python so
+   the reader never senses a comparison was removed. C may be named *only* as the language CPython
+   is implemented in ("the C-level struct", "a memmove at C speed").
+2. **The reader never visits a website.** No "see the card", no "as the article explains". Every
+   concept is built from first principles in `notes/`.
+3. **Every claim is measured, not asserted.** Any statement about CPython behaviour, memory, or
+   performance must be verified by running it against the repo's interpreter before it is written
+   down, and the real observed number reported. Deterministic values must reproduce exactly;
+   timings are expected to vary, so state the ratio or the ordering, never a figure you did not
+   observe.
+
+Raw source material lives in `.leetcode-source/` for authoring only. It is spoiler-dense and
+carries the original framing — never quote it into `notes/`, and never point the user at it.
 
 ## Conventions
 
