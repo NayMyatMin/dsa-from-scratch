@@ -3,6 +3,14 @@
 Nothing here is needed to finish the chapter, and it assumes you have already solved both.
 It's here so the lineage of each problem is on hand when you want more of the same shape.
 
+<!-- Maintenance note: the gate above (repeated on the Chapter 2 hints index) covers this
+     chapter's two problems and nothing else. Naming later problems as the same family is the
+     point of this page; what it must not do is say how a *scaffolded* problem from another
+     chapter is built — one that already has its own hint tiers here — because a reader can
+     legitimately arrive with that one still open, and a shape claim landing right after the
+     Tier 3/Tier 4 material for these two hands over its middle tiers unearned. Connections of
+     that kind belong on whichever after-you-pass page is gated on that problem being solved. -->
+
 **1089 Duplicate Zeros** — tagged *Array* and *Two Pointers*, and the second tag is the whole
 family. The direct sequels are all on your own syllabus: *Remove Element* and *Remove Duplicates
 from Sorted Array* (both Easy) in Chapter 3, then *Move Zeroes*, *Sort Array By Parity* and both of
@@ -20,10 +28,7 @@ is no destination to overwrite and no back end to start from; *Intersection of T
 (Easy) walks two sorted inputs the same way but emits only what both hold; *Merge k Sorted Lists*
 (Hard) generalises to any number of inputs and is what `heapq.merge` does for you in one call; and
 *Median of Two Sorted Arrays* (Hard) is the one that refuses to let you merge at all, since
-producing the answer in logarithmic time means never walking the inputs. Your own Chapter 1
-*Squares of a Sorted Array* is the same skeleton wearing a disguise, which is why Chapter 6 has you
-revisit it — if you solved that one first, compare the two solutions side by side before you move
-on.
+producing the answer in logarithmic time means never walking the inputs.
 
 Both problems also have a Pythonic non-answer worth writing out once, purely to see why it is
 disqualified: build the result as a fresh list and then publish it with `nums[:] = result`. It is

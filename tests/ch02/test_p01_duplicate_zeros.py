@@ -401,7 +401,8 @@ def test_does_not_grow_quadratically() -> None:
     other element is a zero. The correct solutions measure 8.1x and 7.9x on that same
     interleaved shape, so it costs them nothing to be asked.
 
-    Times are the best of several runs, which throws away interference from other processes.
+    Both sizes are timed the same way, as the best of nine runs, which throws away
+    interference from other processes.
     """
     factor, ceiling = 8, 20.0
     for name, make in TIMED_SHAPES:
@@ -412,7 +413,16 @@ def test_does_not_grow_quadratically() -> None:
         returned = solve(arr)
         _check(f"n=8x10^4, {name}", list(big), arr, returned)
 
-        ratio = _timed_best_of(big, 3) / _timed_best_of(small, 9)
+        # Nine tries on both sides, and the count matters as much as the symmetry. A
+        # best-of-N time is a floor measurement -- the real cost is the fastest run, every
+        # other run being that cost plus whatever else the machine was doing -- so a side
+        # sampled only a few times can miss its floor entirely and inflate the ratio by
+        # itself. Measured here over 400 ratios from two correct solutions: three tries at 8n
+        # against nine at n reached 26.1x and cleared the ceiling 4 times; three against three
+        # still reached 26.1x, so matching the two sides is not on its own enough; nine
+        # against nine peaked at 13.2x and never crossed. Nine costs a correct solution about
+        # a tenth of a second. Do not trim it back.
+        ratio = _timed_best_of(big, 9) / _timed_best_of(small, 9)
         assert ratio < ceiling, (
             f"{factor}x the input cost {ratio:.0f}x the time (n={CEILING:,} -> "
             f"{CEILING * factor:,}, {name}). A single pass lands near {factor}x; "

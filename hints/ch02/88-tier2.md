@@ -33,16 +33,14 @@ To see which shapes your current attempt actually fails on:
 uv run pytest tests/ch02 -k merge -v
 ```
 
-> **The official hints, verbatim:** "You can easily solve this problem if you simply think about
-> two elements at a time rather than two arrays. We know that each of the individual arrays is
-> sorted. What we don't know is how they will intertwine. Can we take a local decision and arrive
-> at an optimal solution?" and "If you simply consider one element each at a time from the two
-> arrays and make a decision and proceed accordingly, you will arrive at the optimal solution."
+> **If you go looking for published hints on this one, here is what you will find.** There are two
+> of them, and between them they get no further than the first paragraph above: stop thinking about
+> two whole arrays, take one element from each, decide locally which goes next, and keep going.
+> That is the merge, and it is the easy half.
 >
-> Both of them describe the first paragraph above and then stop. Neither says a word about the
-> destination also being a source, which is the whole of the difficulty here — and "proceed
-> accordingly", taken at face value, walks you straight into the overwrite you just watched
-> happen. They are hints for the easy half.
+> Neither one says a word about the destination also being a source, which is the whole of the
+> difficulty here. Worse, *keep going* taken at face value means keep advancing from the front,
+> which walks you straight into the overwrite you just watched happen.
 
 ---
 

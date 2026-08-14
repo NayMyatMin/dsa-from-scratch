@@ -37,6 +37,7 @@ version of this suite that got that wrong.
 """
 
 import random
+import sys
 import time
 
 import pytest
@@ -344,35 +345,95 @@ def test_does_not_grow_quadratically() -> None:
     every step touches the whole tail. This is the guard that sees those.
 
     Times are the best of several runs, which throws away interference from other processes.
+    `fastest_of` below says how many runs that takes and why fewer is not enough.
     """
     total, factor, ceiling = 4_000, 8, 20.0
 
-    def best_of(size: int, reps: int, seed: int) -> float:
-        # Every repetition needs its own case: the first call leaves nums1 merged, and merging
-        # an already-merged list is a different problem. Building them is not timed.
-        cases = [_growth_case(size, seed) for _ in range(reps)]
+    def fastest_of(size: int, reps: int, seed: int, beyond_doubt: float | None = None) -> float:
+        """The best of up to `reps` merges at `size`, in seconds.
+
+        Every repetition needs its own case: the first call leaves nums1 merged, and merging
+        an already-merged list is a different problem. Building them is not timed.
+
+        The repetitions are noise rejection, not sampling. Interference from other processes
+        only ever makes a run slower, so the fastest of several is the closest thing to a
+        clean measurement of the code itself, and the count has to be high enough that at
+        least one run lands in a quiet window. Three is not enough at this scale: a correct
+        merge at m + n = 32,000 takes under a millisecond and a half, a scheduling burst costs
+        about that much again, and all three runs can be caught inside one. Measured on a
+        loaded machine, eight fresh interpreters timing that size, in milliseconds:
+
+            best of 3       1.27  1.27  1.30  1.82  2.12  2.31  3.60  3.87
+            best of 9       1.27  1.30  1.39  1.40  1.41  1.41  1.42  1.44
+            best of 27      1.40  1.40  1.40  1.40  1.41  1.42  1.43  1.45
+
+        The best of three runs to 2.7x the truth; nine and twenty-seven agree with each other.
+        The small size is already steady at nine (0.151 to 0.161 ms across the same eight), so
+        nine is what both sides get. An earlier version of this test took three at the big size
+        only, which is how a ratio of 24x -- 3.87 / 0.158, from the same interpreter -- got
+        reported for a correct backward merge and failed it. Under load, interleaving that
+        version with this one over forty runs each, it failed the backward merge 6 times and
+        this one 0.
+
+        `beyond_doubt` keeps nine repetitions from being slow to fail. Nine is nothing when a
+        merge takes a millisecond, but a Python-level scan-and-insert takes nearly three
+        seconds at this size, and repeating that six more times only re-establishes what the
+        first three showed. So once three are in and the fastest is still past `beyond_doubt`,
+        the measurement stops.
+
+        The caller sets it to the failing threshold plus a flat 50 ms, and the flatness is the
+        point: interference is an absolute effect, a burst of milliseconds, so what decides
+        whether more repetitions could still rescue a measurement is how many milliseconds
+        separate it from the threshold -- not what multiple of it they are. The largest burst
+        seen in the runs above was about 2.5 ms, so 50 ms is a twentyfold margin, and it would
+        have to land on three consecutive runs to end the loop early. A measurement that far
+        past the threshold is failing on its own merits, not on noise.
+        """
         merge = Solution().merge
         fastest = float("inf")
-        for nums1, m, nums2, n in cases:
+        for taken in range(1, reps + 1):
+            nums1, m, nums2, n = _growth_case(size, seed)
             start = time.perf_counter()
             merge(nums1, m, nums2, n)
             fastest = min(fastest, time.perf_counter() - start)
+            if beyond_doubt is not None and taken >= 3 and fastest > beyond_doubt:
+                break
         return fastest
 
-    def timed(size: int, reps: int, seed: int) -> float:
+    def timed(size: int, reps: int, seed: int, beyond_doubt: float | None = None) -> float:
+        """`fastest_of`, with enough stack for a solution that recurses once per element.
+
+        A recursive merge costs one frame per element. At the stated ceiling of m + n <= 200
+        that is 200 frames against CPython's default limit of 1,000, so it runs on every input
+        this problem actually poses; it only runs out of stack at the far larger sizes measured
+        here, and those sizes are this test's own choice rather than anything the problem asks
+        for. Stack depth is extra space, and extra space is deliberately not policed in this
+        suite -- see the note at the foot of the file -- so a linear-time recursive merge has
+        to be timed like any other, not rejected. The limit goes up for the measurement and
+        straight back down afterwards.
+        """
+        headroom = 4 * size + 1_000
+        limit = sys.getrecursionlimit()
+        sys.setrecursionlimit(max(limit, headroom))
         try:
-            return best_of(size, reps, seed)
+            return fastest_of(size, reps, seed, beyond_doubt)
         except RecursionError:
-            pass  # reported below, outside the handler, so the traceback stays readable
-        pytest.fail(
-            f"merge ran out of stack at m + n = {size:,}. These sizes run past the stated "
-            f"ceiling of 200 deliberately (see the docstring), but a recursion that deep is "
-            f"worth knowing about anyway: one stack frame per element is O(m + n) extra "
-            f"space, and the target here is O(1)."
-        )
+            # Reported below, outside the handler, so the traceback stays readable.
+            reason = (
+                f"merge recursed deeper than {headroom:,} frames at m + n = {size:,}, so its "
+                f"growth could not be timed here. That is over four frames per element, and "
+                f"only at a size this test invented; at the stated ceiling of 200 nothing of "
+                f"the sort happens. Skipped rather than failed -- how much stack a solution "
+                f"uses is not something this suite has any business grading."
+            )
+        finally:
+            sys.setrecursionlimit(limit)
+        pytest.skip(reason)
 
     small_time = timed(total, 9, 1)
-    big_time = timed(total * factor, 3, 2)
+    # Past this, repeating cannot rescue the measurement, so stop paying to repeat it. A
+    # correct merge is nowhere near: it lands around 1.4 ms against a threshold of 3.1 ms.
+    big_time = timed(total * factor, 9, 2, beyond_doubt=ceiling * small_time + 0.050)
 
     ratio = big_time / small_time
     assert ratio < ceiling, (
@@ -406,6 +467,16 @@ def test_does_not_grow_quadratically() -> None:
 #
 # The guard also ran at m + n = 50_000, which is 250x this problem's stated ceiling of 200 --
 # so it was enforcing an invented rule at a scale the problem never reaches.
+#
+# Stack counts as space, and it is not policed either. A merge that recurses once per element
+# is O(m + n) frames deep, which at the stated ceiling is 200 frames against CPython's default
+# limit of 1,000 -- accepted, and correct. It only runs out of stack at the sizes
+# test_does_not_grow_quadratically picked for itself, so that test lifts the recursion limit
+# while it measures rather than reading the overflow as a verdict. A second-hand version of the
+# space rule survived there for a while, failing recursive solutions with a message about an
+# O(1) target that this note had already withdrawn. Same asymptotic extra space as the accepted
+# scratch-list solutions above, on the stack instead of the heap; there is no reason to accept
+# one and reject the other.
 #
 # The genuinely wrong shapes are still caught, by the tests that remain: anything quadratic
 # fails the wall-clock budgets above, and anything that gets the contract wrong fails the

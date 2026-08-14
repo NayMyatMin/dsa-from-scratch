@@ -8,7 +8,7 @@ object layout, slicing semantics in full, the iterator protocol, over-allocation
 cost, the complete operation cost model, aliasing, the other container types, and how to measure
 all of it yourself. Chapter 2 is ~19,600 more on insertion: every form of it Python offers, what
 each one moves, which of them can change a length, and the bugs that appear when a length changes
-underneath code that recorded it. Every claim in both was verified by execution: 271 and 91
+underneath code that recorded it. Every claim in both was verified by execution: 271 and 93
 runnable Python blocks, every `# -> value` a real observed result on this machine.
 
 You should never need to visit a website to use this repo.

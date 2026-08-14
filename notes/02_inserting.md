@@ -20,7 +20,7 @@ before this — everything here is priced against them.
 
 ## How to read this
 
-**Run the code.** Every block is executable exactly as written — there are 91 of them, carrying 234
+**Run the code.** Every block is executable exactly as written — there are 93 of them, carrying 239
 `# -> value` comments — and every one of those comments is a real observed result rather than an
 illustration. Open a session next to this document and paste as you go:
 
@@ -565,16 +565,47 @@ for k, t in sorted(times.items(), key=lambda kv: kv[1]):
 # -> preallocated       2626.4 us    1.35x
 ```
 
-Same shapes, same length, the same order — and the spread has collapsed from 5.58x to 1.35x, because
-the arithmetic each item now carries is charged identically to all three. Prefer the comprehension
-where it says what you mean; do not restructure a loop into one expecting a speedup you can feel.
+Same shapes, same length, the same order — and the spread across the three loop shapes has collapsed
+from 2.42x to 1.35x, because the arithmetic each item now carries is charged identically to all
+three. (2.42x is the same two rows in the table above, preallocated against comprehension; `extend`
+is not a loop and has no row here, so its 5.58x is not the figure that collapses.) Prefer the
+comprehension where it says what you mean; do not restructure a loop into one expecting a speedup
+you can feel.
 
 ### Knowing the final size, and not knowing it
 
 When the count is known before you start, hand the whole source over in one operation. Chapter 1
 section 7 measured what that buys: `extend` on an empty list, from a source that can report its
-length, sizes the block exactly in a single allocation with no slack — which is why that row wins by
-so much. `list(src)` and `src.copy()` do the same.
+length, sizes the block exactly in a single allocation with no slack. `list(src)` and `src.copy()`
+do the same. That is a memory property, and it is worth having for its own sake — but it is not why
+that row wins the table above by so much. The win is the one already measured at the top of this
+section: one C-level call in place of interpreted work per item.
+
+The two come apart cleanly, because the same bulk copy into a list that is *not* empty does the
+identical work and loses the exact sizing:
+
+```python
+import sys
+src = list(range(1_000))
+
+out = []
+out.extend(src)
+print(len(out), sys.getsizeof(out))     # -> 1000 8056
+
+out = [0]
+out.extend(src)
+print(len(out), sys.getsizeof(out))     # -> 1001 8088
+
+out = [x for x in src]
+print(len(out), sys.getsizeof(out))     # -> 1000 8856
+```
+
+Fifty-six bytes of header and eight per slot, so the empty start holds exactly 1000 slots, the
+non-empty start rounds up to 1004, and the comprehension's repeated growth leaves it holding 1100
+for 1000 items. Timed against each other, though, the two `extend` forms land within a few percent
+either way at both 1,000 and 100,000 items, while the comprehension stays multiples behind. Losing
+the exact allocation costs almost nothing; running the loop in the interpreter costs everything the
+table showed.
 
 Preallocating with `[None] * n` and writing by index is the other known-size form. The table above
 prices it last, but that verdict has a size attached to it, and the crossing sits in the low
@@ -730,9 +761,9 @@ above divide out to 0.278, 0.278 and 0.272 ns per element, for tails of 10,000, 
 1,990,000.
 
 What 0.278 ns is not is the least a pointer can be moved for. It is what this particular call
-charges to relocate one slot, and a different insertion form moves the identical tail for less than
-half of that on a million-element list. Section 4 has the measurement. Carry 0.278 ns forward as
-`insert`'s constant rather than the machine's.
+charges to relocate one slot, and a different insertion form moves the identical tail for roughly
+half of that. Section 4 measures that form and divides its constant out against this one. Carry
+0.278 ns forward as `insert`'s constant rather than the machine's.
 
 ### A small constant is what makes the quadratic hard to see
 
@@ -969,8 +1000,8 @@ Ten slot overwrites against ten overwrites plus a bulk move of 999,990 pointers.
 on the right-hand side is the difference between a constant-time edit and a linear one.
 
 When the length does change, the cost tracks how much lives to the right of the edit — the same
-`n - i` curve section 3 measured for `insert`, because it is the same bulk pointer move at C speed
-over the same tail:
+`n - i` curve section 3 measured for `insert`, over the same tail and moved in bulk at C speed. The
+curve is the same; the price per element, as the division below shows, is not:
 
 ```python
 import time
@@ -992,6 +1023,16 @@ for i in (0, 250_000, 500_000, 750_000, n):
 # -> splice at  750000:    29.6 us   ( 250000 elements after it)
 # -> splice at 1000000:     0.2 us   (      0 elements after it)
 ```
+
+Divide each row by the tail it moved and the splice has a per-element constant of its own: 0.133,
+0.132, 0.124 and 0.118 ns down the four rows that move anything, against `insert`'s 0.278 ns from
+section 3. That is what section 3 sent you here for — the same shape of bill, `n - i` elements at a
+fixed price each, but about half the price for the identical tail. Half is the figure to carry and
+not a sharper one, because those two constants were arrived at by different harnesses; timed head to
+head in a single one, the splice lands between roughly 0.45x and 0.6x of `insert` depending on size
+and run. A real factor, then, and not an order of magnitude — the three-orders-of-magnitude gap
+further down this section comes from doing one shift instead of k, never from the shift itself
+being cheap.
 
 ### Any iterable on the right
 
@@ -2073,12 +2114,31 @@ anywhere is invalidated. Where the list is allowed to grow, this is the default.
 needs the change on their object rather than a new one, finish with `shift[:] = out` — chapter 1
 section 9 has why that is a different statement from `shift = out`.
 
-That last step is where the approach runs out. `out` is longer than `shift`, so `shift[:] = out`
-moves the count, and a fixed length forbids exactly that. **When the length is fixed, the object
-you were handed is the answer, and a list of a different length cannot be written into it.** That
-is the situation section 5 sets out, and the situation both of this chapter's problems hand you —
-so at precisely the point where the shifting gets hard, building a second list stops being a way
-out.
+That last step is where the approach starts costing. `out` is longer than `shift`, so
+`shift[:] = out` moves the count, and a fixed length forbids exactly that. **When the length is
+fixed, the object you were handed is the answer, and a list of a different length cannot be written
+into it.** That is the situation section 5 sets out, and the situation both of this chapter's
+problems hand you.
+
+That rules out one statement, though, not the whole approach. The second list still has somewhere to
+land; it just has to arrive at exactly the count you were given, which is the one length-preserving
+family section 5 names. `shift[:] = out` publishes as it stands only when `len(out) == len(shift)`,
+and otherwise you cut it to fit on the way in:
+
+```python
+shift = ['ana', 'ana', 'bo']
+out = ['ana', 'ana', 'handover', 'bo']       # one longer than the list you were handed
+before = (len(shift), id(shift))
+shift[:] = out[:len(shift)]                  # publish, cut to the count you were given
+print(shift, (len(shift), id(shift)) == before)
+# -> ['ana', 'ana', 'handover'] True
+```
+
+Same object, same length, answer inside it. So what a fixed length takes away is not the technique
+but the discount: `out` is a second list of its own, O(n) of room standing next to the list you were
+already handed, and that room is the thing the constraint exists to charge you for. Read it as a
+budget on space rather than a ban, and the choice stays yours to make knowingly — which is the
+choice this chapter's problems are built to make you make.
 
 ### Correct approach two: plan the insertions, then apply them
 
@@ -2198,8 +2258,9 @@ print(alias, alias is jobs)            # -> ['checkpoint', 'build', 'deploy'] Tr
 
 If question 1, 3 or 4 is uncertain, build a new list and return it. That answer is correct under all
 three, and it is the cheaper one besides. Question 2 is the exception, and the only one: when the
-count is fixed, the new list cannot be handed back and cannot be written through the old one either,
-so the work has to happen in the slots you were already given. That is where section 5 leaves you,
+count is fixed, the new list cannot be handed back, and it can only be written through the old one
+if it is exactly the same length — which costs the extra room the constraint exists to deny. Do the
+work in the slots you were already given and you pay neither. That is where section 5 leaves you,
 and where this chapter's problems begin.
 
 ---
