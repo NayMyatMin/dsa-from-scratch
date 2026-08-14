@@ -58,6 +58,11 @@ solution, cover:
 Raw source material lives in `.leetcode-source/` for authoring only. It is spoiler-dense and
 carries the original framing — never quote it into `notes/`, and never point the user at it.
 
+That directory is **gitignored and deliberately not published**: it is LeetCode's copyrighted
+article prose, and this repository is public. It exists only on the owner's machine. A fresh clone
+will not have it, and it must be re-extracted before authoring chapters 2–6. Do not commit it, and
+do not reproduce its prose in any tracked file.
+
 ## Conventions
 
 - **`class Solution` with LeetCode's camelCase method names** is deliberate, so solutions paste

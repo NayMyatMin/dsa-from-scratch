@@ -14,12 +14,12 @@ You should never need to visit a website to use this repo.
 ## Layout
 
 ```
-notes/             The course. Read this first. Standalone — no external reading required.
-arrays101/         Your solutions. Stubs raise NotImplementedError.
-tests/             The spec. Edge cases + randomized property tests.
-hints/             Tiered hints. Open only when stuck, one tier at a time.
-PROGRESS.md        Tracker for the 19 problems.
-.leetcode-source/  Raw source capture. Authoring input, spoiler-dense — not for reading.
+notes/          The course. Read this first. Standalone — no external reading required.
+arrays101/      Your solutions. Stubs raise NotImplementedError.
+tests/          The spec. Edge cases + randomized property tests.
+hints/          Tiered hints, one file per tier. Open one when stuck, and only one.
+dashboard.py    Generates the study dashboard from live repo state.
+PROGRESS.md     Tracker for the 19 problems.
 ```
 
 ## Start here
