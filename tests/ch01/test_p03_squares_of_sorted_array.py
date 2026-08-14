@@ -98,6 +98,15 @@ CASES: list[tuple[list[int], list[int]]] = [
 # being added and enumerating them by hand is a losing game.
 _ORDERING_MODULES = frozenset({"heapq", "bisect", "operator", "functools", "builtins"})
 
+# ...with one carve-out. `heapq.merge` does not order anything: it is a k-way merge of inputs
+# that already arrive in order, one comparison per element yielded, linear in the total. The
+# table in this module's docstring blesses "hand-written merge of the two halves" as a correct
+# shape, and this is that same merge with the loop supplied by the standard library. Banning it
+# would reject an accepted O(n) solution for the sole reason that the function it calls happens
+# to live in a module whose other residents do sort. The rest of heapq stays tainted: heapify
+# plus repeated heappop, and nsmallest/nlargest, are sorts wearing a different hat.
+_LINEAR_EXCEPTIONS = frozenset({"merge"})
+
 _BANNED_NAMES = frozenset(
     {
         # the sort primitives
@@ -160,6 +169,8 @@ def _tainted_aliases(tree: ast.Module) -> set[str]:
         elif isinstance(node, ast.ImportFrom):
             root = (node.module or "").split(".")[0]
             for alias in node.names:
+                if alias.name in _LINEAR_EXCEPTIONS and alias.name not in _BANNED_NAMES:
+                    continue  # heapq.merge and friends: linear, not an ordering primitive
                 if root in _ORDERING_MODULES or alias.name in _BANNED_NAMES:
                     tainted.add(alias.asname or alias.name)
     return tainted
@@ -386,12 +397,23 @@ def test_linear_ignores_value_range() -> None:
     comparing anything, so neither of the other two guards sees it -- but it throws away the
     ordering the input came with, which is the one thing this problem is about. Inputs here
     deliberately run past the stated |nums[i]| <= 10^4 to make that dependency visible.
+
+    Be clear about this test's standing, because it is the one place in this repo where the
+    bar is deliberately set above the judge's. A counting sort over the value range IS
+    accepted by LeetCode: within |nums[i]| <= 10^4 the bucket array is a fixed 20,001 entries,
+    so the solution is linear in n and passes. It is not wrong. It is excluded here because
+    this chapter exists to make you find the two-pointer insight, and bucketing sidesteps it
+    rather than solving it. Every other test in this repo enforces what the problem requires;
+    this one enforces what the exercise is for.
     """
     nums = [-(10**12), -(10**9), -7, 0, 3, 10**6, 10**12]
     assert Solution().sortedSquares(nums) == sorted(x * x for x in nums), (
-        "sortedSquares broke on values outside the stated constraint range, which means its "
-        "work is indexed by the values rather than driven by their order. The magnitudes are "
-        "not the point -- the order they arrive in is."
+        "sortedSquares broke on values far outside the stated constraint range, which means "
+        "its work is indexed by the values rather than driven by their order -- a counting "
+        "sort or a bucket array. That solution is accepted by the judge and it is not a bug; "
+        "this repo rules it out on purpose, because the ordering the input already carries is "
+        "the thing this problem is asking you to exploit. Solve it from the order instead, "
+        "and the magnitudes stop mattering."
     )
 
 
