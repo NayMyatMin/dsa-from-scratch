@@ -40,9 +40,10 @@ from xml.etree import ElementTree
 ROOT = Path(__file__).parent
 WPM = 130  # technical prose with code blocks reads slower than it looks
 DEFAULT_PORT = 8765
-# Editorial judgement, and the one number here the files cannot supply: the sections that
-# carry the model everything later depends on, and so are worth reading before coding.
-CORE_SECTIONS = 7
+# Editorial judgement, and the one thing here the files cannot supply: per chapter, the
+# sections that carry the model everything later depends on, and so are worth reading
+# before coding. A chapter absent from this map treats every section it has as core.
+CORE_SECTIONS = {1: 7, 2: 5}
 # The last live test run rides along inside the page it produced, so --fast has something
 # true to show and no extra file has to appear in the working tree.
 CACHE_RE = re.compile(r'<script type="application/json" id="cache">(.*?)</script>', re.S)
@@ -59,10 +60,21 @@ class Section:
     subsections: int
     code_blocks: int = 0
     drills: int = 0
+    chapter: int = 1
+    notes: str = ""
 
     @property
     def minutes(self) -> int:
         return max(1, round(self.words / WPM))
+
+    @property
+    def label(self) -> str:
+        """How the section is named on the page and in the hero: chapter, then number."""
+        return f"{self.chapter}.{self.num}"
+
+    @property
+    def core(self) -> bool:
+        return self.num <= CORE_SECTIONS.get(self.chapter, self.num)
 
     @property
     def html_id(self) -> str:
@@ -101,8 +113,13 @@ class Chapter:
     notes: str | None = None
     note_words: int = 0
     problems: list[Problem] = field(default_factory=list)
+    sections: list[Section] = field(default_factory=list)
     hints: str | None = None
     source_captured: bool = False
+
+    @property
+    def core_sections(self) -> int:
+        return min(CORE_SECTIONS.get(self.num, len(self.sections)), len(self.sections))
 
 
 CHAPTER_NAMES = {
@@ -118,9 +135,10 @@ CHAPTER_NAMES = {
 # ----------------------------------------------------------------------- discovery
 
 
-def parse_sections(path: Path) -> list[Section]:
+def parse_sections(path: Path, chapter: int = 1) -> list[Section]:
     text = path.read_text(encoding="utf-8")
     parts = re.split(r"^## (\d+)\. (.+)$", text, flags=re.M)
+    rel = str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path)
     out: list[Section] = []
     for i in range(1, len(parts), 3):
         num, title, body = int(parts[i]), parts[i + 1], parts[i + 2]
@@ -128,6 +146,7 @@ def parse_sections(path: Path) -> list[Section]:
             num, title, len(body.split()), body.count("\n### "),
             code_blocks=len(re.findall(r"^```python\b", body, flags=re.M)),
             drills=len({int(d) for d in re.findall(r"\bDrill (\d+)\b", body)}),
+            chapter=chapter, notes=rel,
         ))
     return out
 
@@ -221,6 +240,7 @@ def discover(run: bool, cached: dict[str, dict] | None = None) -> list[Chapter]:
         for note in sorted((ROOT / "notes").glob(f"{num:02d}_*.md")):
             ch.notes = str(note.relative_to(ROOT))
             ch.note_words = len(note.read_text(encoding="utf-8").split())
+            ch.sections = parse_sections(note, num)
 
         hints = ROOT / "hints" / f"ch{num:02d}.md"
         if hints.exists():
@@ -297,7 +317,7 @@ a{color:var(--accent)}
   border:1px solid transparent}
 .sec:hover{background:var(--bg)}
 .sec input{margin:3px 0 0;accent-color:var(--accent);cursor:pointer;flex:none;width:15px;height:15px}
-.sec .n{color:var(--dim);font-variant-numeric:tabular-nums;flex:none;width:20px;font-size:13px}
+.sec .n{color:var(--dim);font-variant-numeric:tabular-nums;flex:none;width:30px;font-size:13px}
 .sec .t{flex:1;min-width:0;overflow-wrap:anywhere}
 .sec .m{color:var(--dim);font-size:12px;flex:none;font-variant-numeric:tabular-nums}
 .sec.done .t{opacity:.45;text-decoration:line-through}
@@ -359,11 +379,11 @@ function paint(){
 
 function hero(done){
   const secs=$$('.sec');
-  const core=Math.min(DATA.core,secs.length);
   const unread=secs.filter(el=>!done.has(el.dataset.id));
-  // Gate on the core sections themselves, not on a count of any seven: ticking §6–§12
-  // leaves the sections this very sentence calls the core unread.
-  const coreLeft=unread.filter(el=>+el.dataset.num<=core);
+  // Gate on the core sections themselves, not on a count of them: ticking the tail of a
+  // chapter leaves the sections this very sentence calls the core unread. Which sections
+  // those are is decided per chapter in the generator and arrives stamped on the row.
+  const coreLeft=unread.filter(el=>el.dataset.core==='1');
   const next=unread[0];
   const probs=DATA.problems;
   const prob=probs.find(p=>p.state!=='green'&&p.state!=='unknown');
@@ -372,36 +392,37 @@ function hero(done){
   if(coreLeft.length){
     const s=coreLeft[0];
     lbl='Read next';
-    h=`§${s.dataset.num}. ${s.dataset.title}`;
-    p=`${s.dataset.words} words, about ${s.dataset.min} minutes. Sections 1–${core} are the core and are best read in order.`;
-    cmd='open notes/01_introduction.md';
+    h=`§${s.dataset.label}. ${s.dataset.title}`;
+    p=`${s.dataset.words} words, about ${s.dataset.min} minutes. ${s.dataset.note}`.trim();
+    cmd='open '+s.dataset.notes;
   }else if(prob){
     lbl = prob.state==='started' ? 'Keep going' : 'Start coding';
     h=`${prob.number}. ${prob.title}`;
     p = prob.state==='started'
-      ? `${prob.passed} passing, ${prob.failed} failing. Run with -x to get one focused traceback.`
-      : `Read the docstring, then replace the raise. The tests are the spec.`;
+      ? `Chapter ${prob.chapter}. ${prob.passed} passing, ${prob.failed} failing. Run with -x to get one focused traceback.`
+      : `Chapter ${prob.chapter}. Read the docstring, then replace the raise. The tests are the spec.`;
     cmd = prob.test ? `uv run pytest ${prob.test} -x` : 'uv run pytest';
   }else if(next){
     lbl='Read next';
-    h=`§${next.dataset.num}. ${next.dataset.title}`;
+    h=`§${next.dataset.label}. ${next.dataset.title}`;
     p=`${next.dataset.words} words, about ${next.dataset.min} minutes.`;
-    cmd='open notes/01_introduction.md';
+    cmd='open '+next.dataset.notes;
   }else if(stale.length){
     lbl='Test status unknown';
     h=`${stale.length} of ${probs.length} problems were not checked`;
     p='This page was built with --fast and has no live result for them, so nothing here knows whether they pass. Regenerate to actually run the suite.';
     cmd='uv run python dashboard.py';
   }else if(probs.length){
-    lbl='Chapter 1 complete';
-    h='Ask for a review, then Chapter 2';
+    const last=probs[probs.length-1].chapter;
+    lbl=`Chapter ${last} complete`;
+    h=`Ask for a review, then Chapter ${last+1}`;
     p=`All ${probs.length} problems are green and every section is read. The review conversation is where most of the remaining learning is.`;
-    cmd='git add -A && git commit -m "Chapter 1 complete"';
+    cmd=`git add -A && git commit -m "Chapter ${last} complete"`;
   }else{
     lbl='No problems found';
-    h='Nothing to code in arrays101/ch01/';
+    h='Nothing to code in arrays101/';
     p='Every section is read, but the generator found no p*.py stubs to work on. If that is a surprise, the directory is the place to look.';
-    cmd='ls arrays101/ch01/';
+    cmd='ls arrays101/';
   }
   $('#hl').textContent=lbl; $('#hh').textContent=h; $('#hp').textContent=p; $('#hc').textContent=cmd;
 }
@@ -444,32 +465,49 @@ def js_json(obj: object) -> str:
             .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"))
 
 
-def render(chapters: list[Chapter], sections: list[Section], ran: bool,
-           cache: dict) -> str:
-    ch1 = chapters[0]
+def render(chapters: list[Chapter], ran: bool, cache: dict) -> str:
+    sections = [s for c in chapters for s in c.sections]
+    problems = [(c, p) for c in chapters for p in c.problems]
     total_words = sum(s.words for s in sections)
     total_min = sum(s.minutes for s in sections)
 
+    def core_note(s: Section) -> str:
+        """The one sentence the hero adds when the section it names is core."""
+        if not s.core:
+            return ""
+        end = next((c.core_sections for c in chapters if c.num == s.chapter), s.num)
+        return (f"Sections 1–{end} of chapter {s.chapter} are the core "
+                "and are best read in order.")
+
+    # data-legacy carries the v1 progress key, which was a position in a one-chapter page.
+    # Only chapter 1 can claim it; emitting it on chapter 2 would hand a reader migrating
+    # from v1 eight ticks they never made.
+    def legacy(s: Section) -> str:
+        return f'data-legacy="s{s.num}" ' if s.chapter == 1 else ""
+
     secs = "\n".join(
-        f'<label class="sec" data-id="{s.html_id}" data-legacy="s{s.num}" data-num="{s.num}" '
+        f'<label class="sec" data-id="{s.html_id}" {legacy(s)}data-num="{s.num}" '
+        f'data-ch="{s.chapter}" data-label="{s.label}" data-core="{int(s.core)}" '
+        f'data-notes="{link(s.notes)}" data-note="{esc(core_note(s))}" '
         f'data-title="{esc(s.title)}" data-words="{s.words:,}" data-min="{s.minutes}">'
-        f'<input type="checkbox" aria-label="Mark section {s.num}, {esc(s.title)}, as read">'
-        f'<span class="n">{s.num}</span>'
+        f'<input type="checkbox" aria-label="Mark chapter {s.chapter} section {s.num}, '
+        f'{esc(s.title)}, as read">'
+        f'<span class="n">{s.label}</span>'
         f'<span class="t">{esc(s.title)}<br><small style="color:var(--dim);font-size:12px">'
         f"{s.subsections} subsections &middot; {s.words:,} words</small></span>"
         f'<span class="m">{s.minutes}m</span></label>'
         for s in sections
     )
 
-    def prob_row(p: Problem) -> str:
+    def prob_row(ch: Chapter, p: Problem) -> str:
         label = {"green": "passing", "started": f"{p.failed} failing", "todo": "not started",
                  "unknown": "unknown"}[p.state]
         cls = p.state if p.state in ("green", "started") else ""
         links = f'<a href="{link(p.stub)}">stub</a>'
         if p.test:
             links += f' &middot; <a href="{link(p.test)}">tests</a>'
-        if ch1.hints:
-            links += f' &middot; <a href="{link(ch1.hints)}">hints</a>'
+        if ch.hints:
+            links += f' &middot; <a href="{link(ch.hints)}">hints</a>'
         return (
             f'<div class="prob"><span class="dot {p.state}"></span>'
             f'<span class="meta"><b>{esc(p.number)}. {esc(p.title)}</b>'
@@ -477,7 +515,16 @@ def render(chapters: list[Chapter], sections: list[Section], ran: bool,
             f'<span class="pill {cls}">{label}</span></div>'
         )
 
-    probs = "\n".join(prob_row(p) for p in ch1.problems)
+    # Grouped by chapter, because two chapters of stubs in one flat list stops saying which
+    # problems belong to what you have just read.
+    coded = [c for c in chapters if c.problems]
+    probs = "\n".join(
+        f'<h3 style="font-size:12px;text-transform:uppercase;letter-spacing:.08em;'
+        f'color:var(--dim);margin:{0 if i == 0 else 22}px 0 2px;font-weight:600">'
+        f"Chapter {c.num} &mdash; {esc(c.name)}</h3>\n"
+        + "\n".join(prob_row(c, p) for p in c.problems)
+        for i, c in enumerate(coded)
+    )
 
     def yn(v: object) -> str:
         return '<span class="tick">&#10003;</span>' if v else '<span class="miss">&mdash;</span>'
@@ -490,37 +537,40 @@ def render(chapters: list[Chapter], sections: list[Section], ran: bool,
         for c in chapters
     )
 
-    data = js_json({"core": CORE_SECTIONS, "problems": [
+    data = js_json({"problems": [
         {"number": p.number, "title": p.title, "state": p.state, "passed": p.passed,
-         "failed": p.failed, "test": p.test, "stub": p.stub}
-        for p in ch1.problems
+         "failed": p.failed, "test": p.test, "stub": p.stub, "chapter": c.num}
+        for c, p in problems
     ]})
 
     if ran:
         status = "live from pytest"
-    elif any(p.state != "unknown" for p in ch1.problems) and cache.get("at"):
+    elif any(p.state != "unknown" for _, p in problems) and cache.get("at"):
         status = f"as of {esc(str(cache['at']))} &mdash; rerun without --fast for live status"
     else:
         status = "not measured &mdash; rerun without --fast for live test status"
 
-    # Everything the Experiment cards claim about the chapter, counted from the chapter.
+    # Everything the Experiment cards claim about the notes, counted from the notes.
     blocks = sum(s.code_blocks for s in sections)
     drilled = max(sections, key=lambda s: s.drills, default=None)
     measuring = next((s for s in sections if re.search(r"measur", s.title, re.I)), None)
     drills_copy = (
-        f"&sect;{drilled.num} is {drilled.drills} predict-the-output drills with an answer "
+        f"&sect;{drilled.label} is {drilled.drills} predict-the-output drills with an answer "
         "key. The honest check on whether the rest landed."
         if drilled and drilled.drills else
-        "The drills at the end of the chapter are the honest check on whether the rest landed."
+        "The drills at the end of a chapter are the honest check on whether the rest landed."
     )
     measure_copy = (
-        f"&sect;{measuring.num} gives a reusable timing harness. Pick any claim in the "
-        "chapter and try to break it."
+        f"&sect;{measuring.label} gives a reusable timing harness. Pick any claim in the "
+        "notes and try to break it."
         if measuring else
-        "Pick any claim in the chapter and try to break it with a timing harness of your own."
+        "Pick any claim in the notes and try to break it with a timing harness of your own."
     )
-    first_test = next((p.test for p in ch1.problems if p.test), "")
+    drills_cmd = f"open {drilled.notes}" if drilled and drilled.notes else "ls notes/"
+    first_test = next((p.test for _, p in problems if p.test), "")
     code_cmd = f"uv run pytest {first_test} -x" if first_test else "uv run pytest"
+    read_chapters = sum(1 for c in chapters if c.sections)
+    chapter_word = "chapter" if read_chapters == 1 else "chapters"
 
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -530,7 +580,7 @@ def render(chapters: list[Chapter], sections: list[Section], ran: bool,
 <div class="wrap">
 
 <h1>Arrays 101 &mdash; Python</h1>
-<p class="sub">One chapter of notes, {len(ch1.problems)} problems, {total_words:,} words
+<p class="sub">{read_chapters} {chapter_word} of notes, {len(problems)} problems, {total_words:,} words
 &middot; test status {status}</p>
 
 <div class="hero">
@@ -550,12 +600,12 @@ def render(chapters: list[Chapter], sections: list[Section], ran: bool,
 
 <h2>Experiment</h2>
 <div class="grid two">
-  <div class="card"><b>Run the chapter</b>
+  <div class="card"><b>Run the notes</b>
     <p style="color:var(--dim);font-size:13.5px;margin:6px 0 0">All {blocks:,} code blocks are
     runnable exactly as written. Paste as you read.</p><pre>uv run python</pre></div>
   <div class="card"><b>Test yourself</b>
     <p style="color:var(--dim);font-size:13.5px;margin:6px 0 0">{drills_copy}</p>
-    <pre>open notes/01_introduction.md</pre></div>
+    <pre>{esc(drills_cmd)}</pre></div>
   <div class="card"><b>Measure something</b>
     <p style="color:var(--dim);font-size:13.5px;margin:6px 0 0">{measure_copy}</p></div>
   <div class="card"><b>Check the whole suite</b>
@@ -660,23 +710,22 @@ def main() -> int:
     if parsed is None:
         return 2
     run = "--fast" not in sys.argv
-    notes = ROOT / "notes" / "01_introduction.md"
-    if not notes.exists():
-        print("notes/01_introduction.md not found", file=sys.stderr)
+    if not sorted((ROOT / "notes").glob("[0-9][0-9]_*.md")):
+        print("no chapter notes found in notes/", file=sys.stderr)
         return 1
     if run:
         print("running tests for live status ...", file=sys.stderr)
 
     out = ROOT / "dashboard.html"
     cached_at, cached = read_cache()          # before the page it lives in is replaced
-    sections = parse_sections(notes)
     chapters = discover(run, cached)
-    ch1 = chapters[0]
+    sections = [s for c in chapters for s in c.sections]
+    problems = [p for c in chapters for p in c.problems]
     if run:
         cache = {"at": datetime.now().strftime("%Y-%m-%d %H:%M"),
                  "problems": {p.slug: {"passed": p.passed, "failed": p.failed,
                                        "stub": stub_fingerprint(ROOT / p.stub)}
-                              for p in ch1.problems if not p.unknown}}
+                              for p in problems if not p.unknown}}
     else:
         cache = {"at": cached_at, "problems": cached}
 
@@ -684,7 +733,7 @@ def main() -> int:
     # previous dashboard intact instead of truncating it to garbage.
     tmp = out.with_suffix(".html.tmp")
     try:
-        tmp.write_text(render(chapters, sections, run, cache), encoding="utf-8")
+        tmp.write_text(render(chapters, run, cache), encoding="utf-8")
     except OSError as exc:
         tmp.unlink(missing_ok=True)
         print(f"could not write {out.name}: {exc}\nthe previous page is untouched",
@@ -695,14 +744,15 @@ def main() -> int:
         raise
     tmp.replace(out)
 
-    green = sum(1 for p in ch1.problems if p.state == "green")
-    unsure = sum(1 for p in ch1.problems if p.state == "unknown")
-    if ch1.problems and unsure == len(ch1.problems):
-        tally = f"{len(ch1.problems)} problems, test status unknown"
+    green = sum(1 for p in problems if p.state == "green")
+    unsure = sum(1 for p in problems if p.state == "unknown")
+    if problems and unsure == len(problems):
+        tally = f"{len(problems)} problems, test status unknown"
     else:
-        tally = f"{green}/{len(ch1.problems)} problems green"
+        tally = f"{green}/{len(problems)} problems green"
         tally += f", {unsure} unknown" if unsure else ""
-    print(f"wrote {out.relative_to(ROOT)} — {len(sections)} sections, {tally}")
+    read = sum(1 for c in chapters if c.sections)
+    print(f"wrote {out.relative_to(ROOT)} — {read} chapters, {len(sections)} sections, {tally}")
     if "--serve" in sys.argv:
         port, scan = parsed
         return serve(port, scan=scan)

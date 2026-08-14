@@ -10,10 +10,12 @@ Notes: [notes/01_introduction.md](notes/01_introduction.md)
 - [ ] 1295. Find Numbers with Even Number of Digits — `arrays101/ch01/p02_find_numbers_even_digits.py`
 - [ ] 977. Squares of a Sorted Array — `arrays101/ch01/p03_squares_of_sorted_array.py`
 
-## Chapter 2 — Inserting Items Into an Array
+## Chapter 2 — Inserting Items Into an Array  *(scaffolded)*
 
-- [ ] 1089. Duplicate Zeros
-- [ ] 88. Merge Sorted Array
+Notes: [notes/02_inserting.md](notes/02_inserting.md)
+
+- [ ] 1089. Duplicate Zeros — `arrays101/ch02/p01_duplicate_zeros.py`
+- [ ] 88. Merge Sorted Array — `arrays101/ch02/p02_merge_sorted_array.py`
 
 ## Chapter 3 — Deleting Items From an Array
 
