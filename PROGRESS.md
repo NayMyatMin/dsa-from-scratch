@@ -17,10 +17,12 @@ Notes: [notes/02_inserting.md](notes/02_inserting.md)
 - [ ] 1089. Duplicate Zeros — `arrays101/ch02/p01_duplicate_zeros.py`
 - [ ] 88. Merge Sorted Array — `arrays101/ch02/p02_merge_sorted_array.py`
 
-## Chapter 3 — Deleting Items From an Array
+## Chapter 3 — Deleting Items From an Array  *(scaffolded)*
 
-- [ ] 27. Remove Element
-- [ ] 26. Remove Duplicates from Sorted Array
+Notes: [notes/03_deleting.md](notes/03_deleting.md)
+
+- [ ] 27. Remove Element — `arrays101/ch03/p01_remove_element.py`
+- [ ] 26. Remove Duplicates from Sorted Array — `arrays101/ch03/p02_remove_duplicates.py`
 
 ## Chapter 4 — Searching for Items in an Array
 

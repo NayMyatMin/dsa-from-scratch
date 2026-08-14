@@ -43,7 +43,7 @@ DEFAULT_PORT = 8765
 # Editorial judgement, and the one thing here the files cannot supply: per chapter, the
 # sections that carry the model everything later depends on, and so are worth reading
 # before coding. A chapter absent from this map treats every section it has as core.
-CORE_SECTIONS = {1: 7, 2: 5}
+CORE_SECTIONS = {1: 7, 2: 5, 3: 6}
 # The last live test run rides along inside the page it produced, so --fast has something
 # true to show and no extra file has to appear in the working tree.
 CACHE_RE = re.compile(r'<script type="application/json" id="cache">(.*?)</script>', re.S)

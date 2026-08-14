@@ -3,13 +3,17 @@
 The nineteen problems of LeetCode's Arrays 101 syllabus, worked in Python 3.14, with the theory
 rewritten from scratch as a standalone Python course.
 
-`notes/` owes nothing to any website. Chapter 1 is ~49,000 words on what a `list` actually is —
+`notes/` owes nothing to any website. Chapter 1 is ~50,000 words on what a `list` actually is —
 object layout, slicing semantics in full, the iterator protocol, over-allocation and amortized
 cost, the complete operation cost model, aliasing, the other container types, and how to measure
-all of it yourself. Chapter 2 is ~19,600 more on insertion: every form of it Python offers, what
+all of it yourself. Chapter 2 is ~20,200 more on insertion: every form of it Python offers, what
 each one moves, which of them can change a length, and the bugs that appear when a length changes
-underneath code that recorded it. Every claim in both was verified by execution: 271 and 93
-runnable Python blocks, every `# -> value` a real observed result on this machine.
+underneath code that recorded it. Chapter 3 is ~22,200 on deletion: every way an element leaves,
+why the front is the expensive end, the one form that has to find its own target and what that
+search costs, what a removal does to an index or an iterator recorded before it, and the case where
+the length may not change at all. Every claim in all three was verified by execution: 271, 93 and
+96 runnable Python blocks, every `# -> value` a real observed result on this machine — 647, 239
+and 240 of them.
 
 You should never need to visit a website to use this repo.
 
@@ -62,11 +66,13 @@ uv run pytest
 
 Expect this to be loud on a fresh clone — hundreds of lines, every failure the identical
 `NotImplementedError` from an untouched stub. `uv run pytest --tb=no` gives you just the one-line
-summary. Neither of the two `passed` in that summary is a solved problem.
+summary. None of the six `passed` in that summary is a solved problem.
 `test_p03_squares_of_sorted_array.py::test_linear_does_not_sort` only asserts that `sortedSquares`
 never calls `sorted()` — vacuously true while the body is still `raise NotImplementedError` — and
-`test_p02_merge_sorted_array.py::test_cases_obey_the_stated_constraints` checks the suite's own
-fixtures against the problem's constraints without calling your code at all.
+the other five never call your code at all: `test_cases_obey_the_stated_constraints`, in chapters 2
+and 3, checks the suite's own fixtures against the problem's stated constraints, and
+`test_the_grader_matches_the_judge`, in chapter 3's two suites, checks that the grader those suites
+score you with agrees with the judge it is imitating.
 
 Stop at the first failure and drop into a debugger:
 
