@@ -58,12 +58,28 @@ measures.
 The routine with the best bound is third of four on the clock, 1.7x to 2.4x behind the one that
 discards the ordering and sorts it back. The cursor's comparisons and writes cost a bytecode apiece,
 while `set`, `sorted` and `dict.fromkeys` do the equivalent work at C speed — and the constraints cap
-`k` at 201, so the sort is over at most 201 values however long the list is. Lift that cap and the
-order reverses: on 300,000 sorted values with 299,964 of them distinct, the cursor takes 8.97 ms and
-`sorted(set(nums))` takes 35.81 ms, while on 300,000 values with `k = 200` the same pair measures
-3.78 ms and 1.59 ms. **Choose the cursor because it is linear on every input shape and allocates
-nothing, not because it wins a stopwatch.** The tension between the bound and the clock is not
-peculiar to this problem, and the bound is the half that survives a change of input.
+`k` at 201, so the sort is over at most 201 values however long the list is.
+
+Lifting that cap reverses the order, but only for values spread widely enough to scramble the set's
+iteration. Three shapes, all 300,000 sorted values, best of seven at n = 300,000:
+
+| shape | cursor | `sorted(set(nums))` | winner |
+|---|---|---|---|
+| within the real constraints, `k <= 201` | 4.08 ms | 2.24 ms | `sorted(set)` |
+| 299,964 distinct, values `0..299963` | 8.39 ms | 3.42 ms | `sorted(set)` |
+| 299,964 distinct, values sampled from `range(10**9)` | 16.32 ms | 49.42 ms | **cursor** |
+
+Only the third row reverses, and the reason is worth having. A CPython `set` of contiguous small
+integers hashes each one to itself, so iterating it comes out very nearly ascending — and `sorted`
+is adaptive, so it finds one long ordered run and is essentially free. Spread the values out and
+the iteration order scrambles, the sort has real work to do, and the O(k log k) term finally shows
+up on the clock. The cursor's cost barely moves across all three.
+
+So the stopwatch does not settle this, and which way it points depends on a property of your data
+you were never told about. **Choose the cursor because it is linear on every input shape and
+allocates nothing, not because it wins a stopwatch** — on this problem's actual constraints it
+loses one. The tension between the bound and the clock is not peculiar to this problem, and the
+bound is the half that survives a change of input.
 
 ## Before you call it done
 
