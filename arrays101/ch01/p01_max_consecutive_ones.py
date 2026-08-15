@@ -26,5 +26,13 @@ is 10^10 operations and will time out. Get the single pass.
 
 
 class Solution:
-    def findMaxConsecutiveOnes(self, nums: list[int]) -> int:
-        raise NotImplementedError("your turn")
+    def findMaxConsecutiveOnes(self, nums: List[int]) -> int:
+        count = maxcount = 0
+        for n in nums:
+            if n == 1:
+                count += 1
+            else:
+                maxcount = max(count, maxcount)
+                count = 0
+            
+        return max(maxcount, count)

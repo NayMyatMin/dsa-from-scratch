@@ -44,8 +44,27 @@ sorting has thrown away the only thing it was given.
 class Solution:
     def sortedSquaresNaive(self, nums: list[int]) -> list[int]:
         """The trivial O(n log n) version. Sorting is allowed and expected here."""
-        raise NotImplementedError("your turn")
+        # Square every element, then sort.
+        return sorted(x * x for x in nums)
 
     def sortedSquares(self, nums: list[int]) -> list[int]:
         """The O(n) follow-up. No sorted(), no .sort()."""
-        raise NotImplementedError("your turn")
+        n = len(nums)
+        left = 0
+        right = n - 1
+        ans = [0] * n
+        # If you use range(n - 1, 0, -1), the loop starts at n-1 and stops before reaching 0 —
+        # that is, i takes on the values n-1, n-2, ..., 1 (but does NOT include 0).
+        # This is because Python's range() always stops before the "stop" value (here, 0).
+        # So, to include 0 as the last index, you write -1 as the stop value (since 0 > -1, but not >= -1).
+        # Example: range(3, 0, -1) produces 3, 2, 1.
+        # Example: range(3, -1, -1) produces 3, 2, 1, 0.
+        for i in range(n - 1, -1, -1):
+            if abs(nums[left]) > abs(nums[right]):
+                ans[i] = nums[left] * nums[left]
+                left += 1
+            else:
+                ans[i] = nums[right] * nums[right]
+                right -= 1
+        return ans
+ 
