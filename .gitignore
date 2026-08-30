@@ -27,3 +27,6 @@ dashboard.html
 # Captured source material — local authoring input only, never published.
 # See CLAUDE.md. Recreate by re-extracting if lost.
 .leetcode-source/
+
+# Scratch pad for trying things from the notes. Yours, not the repo's.
+notes/code.py

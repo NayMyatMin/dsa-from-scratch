@@ -6,9 +6,9 @@
 
 Notes: [notes/01_introduction.md](notes/01_introduction.md)
 
-- [ ] 485. Max Consecutive Ones — `arrays101/ch01/p01_max_consecutive_ones.py`
-- [ ] 1295. Find Numbers with Even Number of Digits — `arrays101/ch01/p02_find_numbers_even_digits.py`
-- [ ] 977. Squares of a Sorted Array — `arrays101/ch01/p03_squares_of_sorted_array.py`
+- [x] 485. Max Consecutive Ones — `arrays101/ch01/p01_max_consecutive_ones.py`
+- [x] 1295. Find Numbers with Even Number of Digits — `arrays101/ch01/p02_find_numbers_even_digits.py`
+- [x] 977. Squares of a Sorted Array — `arrays101/ch01/p03_squares_of_sorted_array.py`
 
 ## Chapter 2 — Inserting Items Into an Array  *(scaffolded)*
 
@@ -24,10 +24,12 @@ Notes: [notes/03_deleting.md](notes/03_deleting.md)
 - [ ] 27. Remove Element — `arrays101/ch03/p01_remove_element.py`
 - [ ] 26. Remove Duplicates from Sorted Array — `arrays101/ch03/p02_remove_duplicates.py`
 
-## Chapter 4 — Searching for Items in an Array
+## Chapter 4 — Searching for Items in an Array  *(scaffolded)*
 
-- [ ] 1346. Check If N and Its Double Exist
-- [ ] 941. Valid Mountain Array
+Notes: [notes/04_searching.md](notes/04_searching.md)
+
+- [ ] 1346. Check If N and Its Double Exist — `arrays101/ch04/p01_check_double_exists.py`
+- [ ] 941. Valid Mountain Array — `arrays101/ch04/p02_valid_mountain_array.py`
 
 ## Chapter 5 — In-Place Operations
 

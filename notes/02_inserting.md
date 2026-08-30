@@ -20,7 +20,7 @@ before this — everything here is priced against them.
 
 ## How to read this
 
-**Run the code.** Every block is executable exactly as written — there are 93 of them, carrying 239
+**Run the code.** Every block is executable exactly as written — there are 93 of them, carrying 238
 `# -> value` comments — and every one of those comments is a real observed result rather than an
 illustration. Open a session next to this document and paste as you go:
 

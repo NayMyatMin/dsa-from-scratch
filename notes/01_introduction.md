@@ -11,7 +11,7 @@ rather than asserted.
 
 ## How to read this
 
-**Run the code.** Every block is executable exactly as written — there are 271 of them, carrying 647
+**Run the code.** Every block is executable exactly as written — there are 271 of them, carrying 646
 `# -> value` comments — and every one of those comments is a real observed result, not an
 illustration. Open a session next to this document and paste as you go:
 

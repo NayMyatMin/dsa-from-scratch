@@ -11,9 +11,14 @@ each one moves, which of them can change a length, and the bugs that appear when
 underneath code that recorded it. Chapter 3 is ~22,200 on deletion: every way an element leaves,
 why the front is the expensive end, the one form that has to find its own target and what that
 search costs, what a removal does to an index or an iterator recorded before it, and the case where
-the length may not change at all. Every claim in all three was verified by execution: 271, 93 and
-96 runnable Python blocks, every `# -> value` a real observed result on this machine — 647, 239
-and 240 of them.
+the length may not change at all. Chapter 4 is ~21,100 on search, the third of the three
+fundamental operations and the one that moves nothing: every spelling of the scan and what each
+refuses to tell you, why one O(n) row spans almost five orders of magnitude on a single list, `set`
+and `dict` as lookup structures and when a second copy of your data pays for itself, halving a
+sorted sequence and the precondition nothing enforces, searching for a description instead of a
+value, and the disagreement between all of them about how to say "not there". Every claim in all
+four was verified by execution: 271, 93, 96 and 85 runnable Python blocks, every `# -> value` a
+real observed result on this machine — 646, 238, 240 and 244 of them.
 
 You should never need to visit a website to use this repo.
 
@@ -66,13 +71,16 @@ uv run pytest
 
 Expect this to be loud on a fresh clone — hundreds of lines, every failure the identical
 `NotImplementedError` from an untouched stub. `uv run pytest --tb=no` gives you just the one-line
-summary. None of the six `passed` in that summary is a solved problem.
+summary. None of the twelve `passed` in that summary is a solved problem.
 `test_p03_squares_of_sorted_array.py::test_linear_does_not_sort` only asserts that `sortedSquares`
 never calls `sorted()` — vacuously true while the body is still `raise NotImplementedError` — and
-the other five never call your code at all: `test_cases_obey_the_stated_constraints`, in chapters 2
-and 3, checks the suite's own fixtures against the problem's stated constraints, and
-`test_the_grader_matches_the_judge`, in chapter 3's two suites, checks that the grader those suites
-score you with agrees with the judge it is imitating.
+the other eleven never call your code at all. `test_cases_obey_the_stated_constraints`, in chapters
+2, 3 and 4, checks the suite's own fixtures against the problem's stated constraints.
+`test_the_grader_matches_the_judge`, in chapter 3's two suites, and
+`test_the_grader_holds_the_contract_it_describes`, in chapter 4's two, check that the grader those
+suites score you with agrees with the judge it is imitating. And
+`test_the_shape_builders_are_what_they_claim`, also in chapter 4's two suites, checks that a fixture
+built for a named shape really has that shape.
 
 Stop at the first failure and drop into a debugger:
 
