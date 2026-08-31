@@ -49,7 +49,16 @@ DEFAULT_PORT = 8765
 # and the choice between them is the chapter's subject; 6 is the search whose target has no
 # name; and 7 is what every tool in the other six does when it finds nothing, which is where
 # the correctness lives. Only the exam sits outside.
-CORE_SECTIONS = {1: 7, 2: 5, 3: 6, 4: 7}
+# Chapter 5 is 3, and it is the one entry here decided by something other than importance.
+# That chapter is split by a hard gate: sections 1 to 3 are safe for anyone, and section 4 opens
+# by handing over, by name, the technique behind 27 and 26 — chapter 3's two problems, which a
+# reader arriving here has very likely not solved. Sections 4 to 8 are not a deferrable tail;
+# they are the chapter's whole subject. But "core" drives the Read next prompt, and prompting a
+# reader straight through that gate would spend two problems for them. Three is also the honest
+# read-before-coding band: 1299 is solvable from sections 1 to 3 alone, and section 4 ends by
+# telling the reader to go and attempt 283 and 905 before reading section 5 at all. So the
+# dashboard stops nagging exactly where the chapter tells you to stop.
+CORE_SECTIONS = {1: 7, 2: 5, 3: 6, 4: 7, 5: 3}
 # The last live test run rides along inside the page it produced, so --fast has something
 # true to show and no extra file has to appear in the working tree.
 CACHE_RE = re.compile(r'<script type="application/json" id="cache">(.*?)</script>', re.S)

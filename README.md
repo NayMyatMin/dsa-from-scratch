@@ -16,9 +16,17 @@ fundamental operations and the one that moves nothing: every spelling of the sca
 refuses to tell you, why one O(n) row spans almost five orders of magnitude on a single list, `set`
 and `dict` as lookup structures and when a second copy of your data pays for itself, halving a
 sorted sequence and the precondition nothing enforces, searching for a description instead of a
-value, and the disagreement between all of them about how to say "not there". Every claim in all
-four was verified by execution: 271, 93, 96 and 85 runnable Python blocks, every `# -> value` a
-real observed result on this machine — 646, 238, 240 and 244 of them.
+value, and the disagreement between all of them about how to say "not there". Chapter 5 is ~24,600
+on working in place, which is not an operation but a constraint on where the answer is delivered:
+the two readings of that phrase and the measurements that pull them apart, what a second list costs
+in bytes and why that is not also a time argument, the whole family of rewrites that keep their
+length and the direction that keeps them correct, the trade between shifting a tail and allocating a
+copy once the answer is shorter than its input, two indices travelling over one list in convoy and
+two converging on it from the ends, and the case against overwriting anything a caller still holds a
+name for. It ships with a gate: sections 1 to 3 are safe for anyone, and section 4 onward hands over
+the technique behind chapter 3's two problems by name, so its header says where to stop and why.
+Every claim in all five was verified by execution: 271, 93, 96, 85 and 80 runnable Python blocks,
+every `# -> value` a real observed result on this machine — 646, 238, 240, 244 and 187 of them.
 
 You should never need to visit a website to use this repo.
 
@@ -71,16 +79,20 @@ uv run pytest
 
 Expect this to be loud on a fresh clone — hundreds of lines, every failure the identical
 `NotImplementedError` from an untouched stub. `uv run pytest --tb=no` gives you just the one-line
-summary. None of the twelve `passed` in that summary is a solved problem.
+summary. None of the twenty-five `passed` in that summary is a solved problem.
 `test_p03_squares_of_sorted_array.py::test_linear_does_not_sort` only asserts that `sortedSquares`
 never calls `sorted()` — vacuously true while the body is still `raise NotImplementedError` — and
-the other eleven never call your code at all. `test_cases_obey_the_stated_constraints`, in chapters
-2, 3 and 4, checks the suite's own fixtures against the problem's stated constraints.
+the other twenty-four never call your code at all. `test_cases_obey_the_stated_constraints`, in
+chapters 2, 3, 4 and 5, checks the suite's own fixtures against the problem's stated constraints.
 `test_the_grader_matches_the_judge`, in chapter 3's two suites, and
-`test_the_grader_holds_the_contract_it_describes`, in chapter 4's two, check that the grader those
-suites score you with agrees with the judge it is imitating. And
-`test_the_shape_builders_are_what_they_claim`, also in chapter 4's two suites, checks that a fixture
-built for a named shape really has that shape.
+`test_the_grader_holds_the_contract_it_describes`, in chapter 4's two and chapter 5's three, check
+that the grader those suites score you with agrees with the judge it is imitating; chapter 5 adds
+`test_the_grader_names_what_went_wrong` on 1299 and
+`test_the_grader_accepts_every_arrangement_the_statement_does` on 905, one problem having a single
+right answer and the other many. `test_the_shape_builders_are_what_they_claim`, in chapter 4's two
+suites and chapter 5's three, checks that a fixture built for a named shape really has that shape,
+and `test_the_examples_answers_are_what_the_statement_says`, in chapter 5's 1299 and 283, checks the
+worked examples against the rule they are meant to illustrate.
 
 Stop at the first failure and drop into a debugger:
 

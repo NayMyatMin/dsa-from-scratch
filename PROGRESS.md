@@ -31,13 +31,16 @@ Notes: [notes/04_searching.md](notes/04_searching.md)
 - [ ] 1346. Check If N and Its Double Exist — `arrays101/ch04/p01_check_double_exists.py`
 - [ ] 941. Valid Mountain Array — `arrays101/ch04/p02_valid_mountain_array.py`
 
-## Chapter 5 — In-Place Operations
+## Chapter 5 — In-Place Operations  *(scaffolded)*
 
-- [ ] 1299. Replace Elements with Greatest Element on Right Side
-- [ ] 26. Remove Duplicates from Sorted Array *(revisit, in-place framing)*
-- [ ] 283. Move Zeroes
-- [ ] 905. Sort Array By Parity
-- [ ] 27. Remove Element *(revisit, in-place framing)*
+Notes: [notes/05_in_place.md](notes/05_in_place.md) — **sections 1–3 are safe for anyone; section 4
+onward gives away the technique behind 27 and 26 by name.**
+
+- [ ] 1299. Replace Elements with Greatest Element on Right Side — `arrays101/ch05/p01_replace_greatest_right.py`
+- [ ] 26. Remove Duplicates from Sorted Array *(revisit — no new stub; solve `arrays101/ch03/p02_remove_duplicates.py`, ticked in chapter 3)*
+- [ ] 283. Move Zeroes — `arrays101/ch05/p02_move_zeroes.py`
+- [ ] 905. Sort Array By Parity — `arrays101/ch05/p03_sort_array_by_parity.py`
+- [ ] 27. Remove Element *(revisit — no new stub; solve `arrays101/ch03/p01_remove_element.py`, ticked in chapter 3)*
 
 ## Chapter 6 — Conclusion
 
